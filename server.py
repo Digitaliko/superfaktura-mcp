@@ -4,12 +4,56 @@ import os
 import requests
 from typing import Optional, Dict, Any, List
 from datetime import datetime
-from fastmcp import FastMCP
+from fastmcp import FastMCP, Context
 from dotenv import load_dotenv
 
 load_dotenv()
 
 mcp = FastMCP(name="superfaktura")
+
+
+def get_credentials_from_context(context: Context = None) -> tuple:
+    """
+    Extract SuperFaktura credentials from MCP request context/headers.
+
+    For public MCP deployments, users configure credentials in their
+    Claude Desktop config as custom headers:
+
+    {
+      "mcpServers": {
+        "superfaktura": {
+          "url": "https://your-mcp-server.com/mcp",
+          "headers": {
+            "X-SuperFaktura-Email": "user@example.com",
+            "X-SuperFaktura-API-Key": "user-key",
+            "X-SuperFaktura-Country": "sk",
+            "X-SuperFaktura-Company-ID": "optional"
+          }
+        }
+      }
+    }
+
+    Returns:
+        tuple: (email, apikey, company_id, country)
+    """
+    if not context:
+        # Fallback to environment variables
+        return (
+            os.getenv("SUPERFAKTURA_EMAIL"),
+            os.getenv("SUPERFAKTURA_API_KEY"),
+            os.getenv("SUPERFAKTURA_COMPANY_ID"),
+            os.getenv("SUPERFAKTURA_COUNTRY", "sk"),
+        )
+
+    # Try to get credentials from request headers (for HTTP/SSE transport)
+    headers = getattr(context, "headers", {}) or {}
+
+    email = headers.get("x-superfaktura-email") or os.getenv("SUPERFAKTURA_EMAIL")
+    apikey = headers.get("x-superfaktura-api-key") or os.getenv("SUPERFAKTURA_API_KEY")
+    company_id = headers.get("x-superfaktura-company-id") or os.getenv("SUPERFAKTURA_COMPANY_ID")
+    country = headers.get("x-superfaktura-country") or os.getenv("SUPERFAKTURA_COUNTRY", "sk")
+
+    return email, apikey, company_id, country
 
 BASE_URLS = {
     "sk": "https://moja.superfaktura.sk",
@@ -34,6 +78,8 @@ class SuperFakturaClient:
         api_key: Optional[str] = None,
         api_url: Optional[str] = None,
         country: str = "sk",
+        company_id: Optional[str] = None,
+        module: str = "superfaktura-mcp/2.0",
     ):
         """
         Initialize SuperFaktura API client.
@@ -43,12 +89,16 @@ class SuperFakturaClient:
             api_key: API key (falls back to SUPERFAKTURA_API_KEY env var)
             api_url: Custom API URL (falls back to SUPERFAKTURA_API_URL env var)
             country: Country code - sk, cz, at, sandbox-sk, sandbox-cz (default: sk)
+            company_id: Company ID (optional, falls back to SUPERFAKTURA_COMPANY_ID env var)
+            module: Module identifier for API (default: superfaktura-mcp/2.0)
 
         Raises:
             ValueError: If credentials are not provided via parameters or environment variables
         """
         self.email = email or os.getenv("SUPERFAKTURA_EMAIL")
         self.api_key = api_key or os.getenv("SUPERFAKTURA_API_KEY")
+        self.company_id = company_id or os.getenv("SUPERFAKTURA_COMPANY_ID")
+        self.module = module
 
         if not self.email or not self.api_key:
             raise ValueError(
@@ -66,9 +116,20 @@ class SuperFakturaClient:
                 raise ValueError(f"Invalid country code: {resolved_country}")
 
     def _get_headers(self) -> Dict[str, str]:
-        """Generate authentication headers."""
+        """Generate authentication headers per SuperFaktura API spec."""
+        from urllib.parse import quote
+
+        auth_parts = [
+            f"email={quote(self.email)}",
+            f"apikey={quote(self.api_key)}",
+            f"module={quote(self.module)}",
+        ]
+
+        if self.company_id:
+            auth_parts.append(f"company_id={quote(self.company_id)}")
+
         return {
-            "Authorization": f"SFAPI email={self.email}&apikey={self.api_key}",
+            "Authorization": f"SFAPI {'&'.join(auth_parts)}",
             "Content-Type": "application/json",
         }
 
@@ -112,6 +173,40 @@ try:
 except ValueError:
     # No env vars set - multi-tenant mode, credentials must be provided per-request
     client = None  # type: ignore
+
+
+def _get_client(context: Context = None) -> SuperFakturaClient:
+    """
+    Get SuperFaktura client with credentials from context or environment.
+
+    For public MCP deployments, credentials come from custom headers in
+    Claude Desktop config. For local/single-tenant, uses environment variables.
+
+    Args:
+        context: FastMCP context containing request headers
+
+    Returns:
+        Configured SuperFakturaClient instance
+
+    Raises:
+        ValueError: If no credentials available
+    """
+    email, apikey, company_id, country = get_credentials_from_context(context)
+
+    if not email or not apikey:
+        raise ValueError(
+            "SuperFaktura credentials not found. "
+            "Configure credentials in Claude Desktop config headers "
+            "(X-SuperFaktura-Email, X-SuperFaktura-API-Key) "
+            "or set SUPERFAKTURA_EMAIL and SUPERFAKTURA_API_KEY environment variables."
+        )
+
+    return SuperFakturaClient(
+        email=email,
+        api_key=apikey,
+        company_id=company_id,
+        country=country,
+    )
 
 
 @mcp.tool()
@@ -162,6 +257,7 @@ def create_invoice(
     invoice_setting: Optional[Dict[str, Any]] = None,
     invoice_extra: Optional[Dict[str, Any]] = None,
     my_data: Optional[Dict[str, Any]] = None,
+context: Context = None,
 ) -> Dict[str, Any]:
     """
     Create a new invoice in SuperFaktura with comprehensive options.
@@ -311,7 +407,7 @@ def create_invoice(
     if my_data:
         invoice_data["MyData"] = my_data
 
-    return client.post("invoices/create", invoice_data)
+    return _get_client(context).post("invoices/create", invoice_data)
 
 
 @mcp.tool()
@@ -342,6 +438,8 @@ def list_invoices(
     search: Optional[str] = None,
     tag: Optional[int] = None,
     ignore: Optional[str] = None,
+
+context: Context = None,
 ) -> Dict[str, Any]:
     """
     List invoices with comprehensive filtering and sorting.
@@ -450,11 +548,13 @@ def list_invoices(
         params.append(f"ignore:{ignore}")
 
     endpoint = f"invoices/index.json/{'/'.join(params)}"
-    return client.get(endpoint)
+    return _get_client(context).get(endpoint)
 
 
 @mcp.tool()
-def get_invoice(invoice_id: int) -> Dict[str, Any]:
+def get_invoice(invoice_id: int,
+context: Context = None,
+) -> Dict[str, Any]:
     """
     Get detailed information about a specific invoice.
 
@@ -464,11 +564,13 @@ def get_invoice(invoice_id: int) -> Dict[str, Any]:
     Returns:
         Invoice details including items, client info, and payment status
     """
-    return client.get(f"invoices/view/{invoice_id}.json")
+    return _get_client(context).get(f"invoices/view/{invoice_id}.json")
 
 
 @mcp.tool()
-def send_invoice(invoice_id: int, email: Optional[str] = None) -> Dict[str, Any]:
+def send_invoice(invoice_id: int, email: Optional[str] = None,
+context: Context = None,
+) -> Dict[str, Any]:
     """
     Send an invoice via email.
 
@@ -483,12 +585,13 @@ def send_invoice(invoice_id: int, email: Optional[str] = None) -> Dict[str, Any]
     if email:
         data["Invoice"]["email"] = email
 
-    return client.post("invoices/send", data)
+    return _get_client(context).post("invoices/send", data)
 
 
 @mcp.tool()
 def mark_invoice_paid(
-    invoice_id: int, amount: float, payment_date: Optional[str] = None
+    invoice_id: int, amount: float, payment_date: Optional[str] = None,
+    context: Context = None,
 ) -> Dict[str, Any]:
     """
     Mark an invoice as paid by recording a payment.
@@ -513,7 +616,7 @@ def mark_invoice_paid(
         }
     }
 
-    return client.post("invoice_payments/add", payment_data)
+    return _get_client(context).post("invoice_payments/add", payment_data)
 
 
 @mcp.tool()
@@ -553,6 +656,8 @@ def create_client(
     match_address: Optional[int] = None,
     update: Optional[bool] = None,
     tags: Optional[str] = None,
+
+context: Context = None,
 ) -> Dict[str, Any]:
     """
     Create a new client in SuperFaktura with comprehensive options.
@@ -661,7 +766,7 @@ def create_client(
     if tags:
         client_obj["tags"] = tags
 
-    return client.post("clients/create", client_data)
+    return _get_client(context).post("clients/create", client_data)
 
 
 @mcp.tool()
@@ -679,6 +784,8 @@ def list_clients(
     created_to: Optional[str] = None,
     modified_since: Optional[str] = None,
     modified_to: Optional[str] = None,
+
+context: Context = None,
 ) -> Dict[str, Any]:
     """
     List all clients with comprehensive filtering and sorting.
@@ -734,11 +841,12 @@ def list_clients(
             params.append(f"modified_to:{modified_to}")
 
     endpoint = f"clients/index.json/{'/'.join(params)}"
-    return client.get(endpoint)
+    return _get_client(context).get(endpoint)
 
 
 @mcp.tool()
-def get_client(client_id: int) -> Dict[str, Any]:
+def get_client(client_id: int, context: Context = None,
+) -> Dict[str, Any]:
     """
     Get detailed information about a specific client.
 
@@ -748,11 +856,12 @@ def get_client(client_id: int) -> Dict[str, Any]:
     Returns:
         Client details including contact information and invoice history
     """
-    return client.get(f"clients/view/{client_id}.json")
+    return _get_client(context).get(f"clients/view/{client_id}.json")
 
 
 @mcp.tool()
-def update_client(client_id: int, updates: Dict[str, Any]) -> Dict[str, Any]:
+def update_client(client_id: int, updates: Dict[str, Any], context: Context = None,
+) -> Dict[str, Any]:
     """
     Update client information.
 
@@ -764,7 +873,7 @@ def update_client(client_id: int, updates: Dict[str, Any]) -> Dict[str, Any]:
         Update response
     """
     client_data = {"Client": {"id": client_id, **updates}}
-    return client.patch(f"clients/edit/{client_id}", client_data)
+    return _get_client(context).patch(f"clients/edit/{client_id}", client_data)
 
 
 @mcp.tool()
@@ -801,6 +910,7 @@ def create_expense(
     expense_items: Optional[List[Dict[str, Any]]] = None,
     expense_extra: Optional[Dict[str, Any]] = None,
     client_data: Optional[Dict[str, Any]] = None,
+    context: Context = None,
 ) -> Dict[str, Any]:
     """
     Create a new expense record with comprehensive options.
@@ -902,7 +1012,7 @@ def create_expense(
     if client_data:
         expense_data["Client"] = client_data
 
-    return client.post("expenses/add", expense_data)
+    return _get_client(context).post("expenses/add", expense_data)
 
 
 @mcp.tool()
@@ -927,6 +1037,8 @@ def list_expenses(
     search: Optional[str] = None,
     status: Optional[str] = None,
     type: Optional[str] = None,
+
+context: Context = None,
 ) -> Dict[str, Any]:
     """
     List expenses with comprehensive filtering and sorting.
@@ -1011,11 +1123,13 @@ def list_expenses(
         params.append(f"type:{type}")
 
     endpoint = f"expenses/index.json/{'/'.join(params)}"
-    return client.get(endpoint)
+    return _get_client(context).get(endpoint)
 
 
 @mcp.tool()
-def get_expense(expense_id: int) -> Dict[str, Any]:
+def get_expense(expense_id: int,
+context: Context = None,
+) -> Dict[str, Any]:
     """
     Get detailed information about a specific expense.
 
@@ -1025,7 +1139,7 @@ def get_expense(expense_id: int) -> Dict[str, Any]:
     Returns:
         Expense details
     """
-    return client.get(f"expenses/view/{expense_id}.json")
+    return _get_client(context).get(f"expenses/view/{expense_id}.json")
 
 
 # ============================================================================
@@ -1034,7 +1148,8 @@ def get_expense(expense_id: int) -> Dict[str, Any]:
 
 
 @mcp.tool()
-def edit_invoice(invoice_id: int, updates: Dict[str, Any]) -> Dict[str, Any]:
+def edit_invoice(invoice_id: int, updates: Dict[str, Any], context: Context = None,
+) -> Dict[str, Any]:
     """
     Edit an existing invoice.
 
@@ -1057,11 +1172,13 @@ def edit_invoice(invoice_id: int, updates: Dict[str, Any]) -> Dict[str, Any]:
     if "Client" in updates:
         invoice_data["Client"] = updates["Client"]
 
-    return client.patch(f"invoices/edit/{invoice_id}", invoice_data)
+    return _get_client(context).post("invoices/edit", invoice_data)
 
 
 @mcp.tool()
-def get_invoice_pdf(invoice_id: int, language: Optional[str] = None) -> Dict[str, Any]:
+def get_invoice_pdf(invoice_id: int, language: Optional[str] = None,
+context: Context = None,
+) -> Dict[str, Any]:
     """
     Get invoice PDF download URL and metadata.
 
@@ -1076,11 +1193,13 @@ def get_invoice_pdf(invoice_id: int, language: Optional[str] = None) -> Dict[str
     if language:
         endpoint += f"/lang:{language}"
 
-    return client.get(endpoint)
+    return _get_client(context).get(endpoint)
 
 
 @mcp.tool()
-def delete_invoice(invoice_id: int) -> Dict[str, Any]:
+def delete_invoice(invoice_id: int,
+context: Context = None,
+) -> Dict[str, Any]:
     """
     Delete an invoice.
 
@@ -1090,11 +1209,13 @@ def delete_invoice(invoice_id: int) -> Dict[str, Any]:
     Returns:
         Deletion response
     """
-    return client.delete(f"invoices/delete/{invoice_id}")
+    return _get_client(context).delete(f"invoices/delete/{invoice_id}")
 
 
 @mcp.tool()
-def set_invoice_language(invoice_id: int, language: str) -> Dict[str, Any]:
+def set_invoice_language(invoice_id: int, language: str,
+context: Context = None,
+) -> Dict[str, Any]:
     """
     Set invoice language.
 
@@ -1106,7 +1227,7 @@ def set_invoice_language(invoice_id: int, language: str) -> Dict[str, Any]:
         Update response
     """
     data = {"InvoiceSetting": {"language": language}}
-    return client.post(f"invoices/setinvoicelanguage/{invoice_id}", data)
+    return _get_client(context).post(f"invoices/setinvoicelanguage/{invoice_id}", data)
 
 
 # ============================================================================
@@ -1115,7 +1236,9 @@ def set_invoice_language(invoice_id: int, language: str) -> Dict[str, Any]:
 
 
 @mcp.tool()
-def delete_client(client_id: int) -> Dict[str, Any]:
+def delete_client(client_id: int,
+context: Context = None,
+) -> Dict[str, Any]:
     """
     Delete a client.
 
@@ -1125,7 +1248,7 @@ def delete_client(client_id: int) -> Dict[str, Any]:
     Returns:
         Deletion response
     """
-    return client.delete(f"clients/delete/{client_id}")
+    return _get_client(context).delete(f"clients/delete/{client_id}")
 
 
 # ============================================================================
@@ -1134,7 +1257,8 @@ def delete_client(client_id: int) -> Dict[str, Any]:
 
 
 @mcp.tool()
-def edit_expense(expense_id: int, updates: Dict[str, Any]) -> Dict[str, Any]:
+def edit_expense(expense_id: int, updates: Dict[str, Any], context: Context = None,
+) -> Dict[str, Any]:
     """
     Edit an existing expense.
 
@@ -1155,11 +1279,13 @@ def edit_expense(expense_id: int, updates: Dict[str, Any]) -> Dict[str, Any]:
     if "Client" in updates:
         expense_data["Client"] = updates["Client"]
 
-    return client.patch(f"expenses/edit/{expense_id}", expense_data)
+    return _get_client(context).post("expenses/edit", expense_data)
 
 
 @mcp.tool()
-def delete_expense(expense_id: int) -> Dict[str, Any]:
+def delete_expense(expense_id: int,
+context: Context = None,
+) -> Dict[str, Any]:
     """
     Delete an expense.
 
@@ -1169,7 +1295,7 @@ def delete_expense(expense_id: int) -> Dict[str, Any]:
     Returns:
         Deletion response
     """
-    return client.delete(f"expenses/delete/{expense_id}")
+    return _get_client(context).delete(f"expenses/delete/{expense_id}")
 
 
 if __name__ == "__main__":
