@@ -1,0 +1,26 @@
+[project]
+name = "superfaktura-mcp"
+version = "0.1.0"
+description = "Model Context Protocol server for SuperFaktura invoicing system - enables AI assistants to manage invoices, clients, and expenses"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Filip Popranec", email = "filip.popranec@digitaliko.com"}
+]
+
+dependencies = [
+    "fastmcp>=2.6.0",
+    "requests>=2.31.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/digitaliko/superfaktura-mcp"
+Repository = "https://github.com/digitaliko/superfaktura-mcp"
+Documentation = "https://github.com/superfaktura/docs"
+"API Reference" = "https://github.com/xseman/superfaktura.openapi"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
