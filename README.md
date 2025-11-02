@@ -44,7 +44,9 @@ cd superfaktura-mcp
 pip install -r requirements.txt
 ```
 
-3. Configure environment:
+3. Configure credentials (choose one):
+
+### Option A: Environment Variables (Recommended for single-tenant/local development)
 ```bash
 cp .env.example .env
 ```
@@ -64,9 +66,25 @@ SUPERFAKTURA_COUNTRY=sk
 - `sandbox-cz` - Czech Republic Sandbox
 
 **Custom API URL (optional):**
-For sandbox or custom environments, you can override the country-based URL:
+For sandbox or custom environments:
 ```
 SUPERFAKTURA_API_URL=https://sandbox.superfaktura.sk
+```
+
+### Option B: Multi-Tenant Deployment
+For deployed MCP servers where each user has their own credentials, set environment variables in your deployment platform (Vercel, AWS Lambda, Docker, etc.).
+
+The server will automatically use credentials from environment variables. For per-request credentials (advanced), create custom client instances:
+
+```python
+from server import SuperFakturaClient
+
+# Create client with user-specific credentials
+user_client = SuperFakturaClient(
+    email="user@example.com",
+    api_key="user-api-key",
+    country="sk"
+)
 ```
 
 ## Getting API Credentials

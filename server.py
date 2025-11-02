@@ -21,22 +21,49 @@ BASE_URLS = {
 
 
 class SuperFakturaClient:
-    """Client for interacting with SuperFaktura API."""
+    """
+    Client for interacting with SuperFaktura API.
 
-    def __init__(self):
-        self.email = os.getenv("SUPERFAKTURA_EMAIL")
-        self.api_key = os.getenv("SUPERFAKTURA_API_KEY")
+    Supports both environment variables (for single-tenant/local development)
+    and per-request credentials (for multi-tenant deployments).
+    """
+
+    def __init__(
+        self,
+        email: Optional[str] = None,
+        api_key: Optional[str] = None,
+        api_url: Optional[str] = None,
+        country: str = "sk",
+    ):
+        """
+        Initialize SuperFaktura API client.
+
+        Args:
+            email: Account email (falls back to SUPERFAKTURA_EMAIL env var)
+            api_key: API key (falls back to SUPERFAKTURA_API_KEY env var)
+            api_url: Custom API URL (falls back to SUPERFAKTURA_API_URL env var)
+            country: Country code - sk, cz, at, sandbox-sk, sandbox-cz (default: sk)
+
+        Raises:
+            ValueError: If credentials are not provided via parameters or environment variables
+        """
+        self.email = email or os.getenv("SUPERFAKTURA_EMAIL")
+        self.api_key = api_key or os.getenv("SUPERFAKTURA_API_KEY")
 
         if not self.email or not self.api_key:
-            raise ValueError("SUPERFAKTURA_EMAIL and SUPERFAKTURA_API_KEY must be set")
+            raise ValueError(
+                "SuperFaktura credentials required. "
+                "Provide email and api_key parameters, or set "
+                "SUPERFAKTURA_EMAIL and SUPERFAKTURA_API_KEY environment variables."
+            )
 
-        # Support custom API URL (useful for sandbox) or use country-based URL
-        self.base_url = os.getenv("SUPERFAKTURA_API_URL")
+        # Support custom API URL or use country-based URL
+        self.base_url = api_url or os.getenv("SUPERFAKTURA_API_URL")
         if not self.base_url:
-            country = os.getenv("SUPERFAKTURA_COUNTRY", "sk")
-            self.base_url = BASE_URLS.get(country)
+            resolved_country = country or os.getenv("SUPERFAKTURA_COUNTRY", "sk")
+            self.base_url = BASE_URLS.get(resolved_country)
             if not self.base_url:
-                raise ValueError(f"Invalid country code: {country}")
+                raise ValueError(f"Invalid country code: {resolved_country}")
 
     def _get_headers(self) -> Dict[str, str]:
         """Generate authentication headers."""
@@ -78,7 +105,13 @@ class SuperFakturaClient:
         return self._request("DELETE", endpoint)
 
 
-client = SuperFakturaClient()
+# Global client for single-tenant deployments using environment variables
+# For multi-tenant: create client instances with SuperFakturaClient(email, api_key)
+try:
+    client = SuperFakturaClient()
+except ValueError:
+    # No env vars set - multi-tenant mode, credentials must be provided per-request
+    client = None  # type: ignore
 
 
 @mcp.tool()
