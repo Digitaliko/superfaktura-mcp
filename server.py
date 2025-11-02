@@ -14,20 +14,25 @@ mcp = FastMCP(name="superfaktura")
 
 def get_credentials_from_context(context: Context = None) -> tuple:
     """
-    Extract SuperFaktura credentials from MCP request context/headers.
+    Extract SuperFaktura credentials from MCP request context.
 
-    For public MCP deployments, users configure credentials in their
-    Claude Desktop config as custom headers:
+    Supports multiple credential sources:
+    1. HTTP query parameters (Smithery hosted deployment)
+    2. Custom headers (FastMCP Cloud deployment)
+    3. Environment variables (local/single-tenant)
 
+    For Smithery HTTP deployment, users configure when connecting:
+    https://server.com/mcp?email=user@example.com&apiKey=xyz&country=sk
+
+    For FastMCP Cloud with headers:
     {
       "mcpServers": {
         "superfaktura": {
-          "url": "https://your-mcp-server.com/mcp",
+          "url": "https://superfaktura.fastmcp.app/mcp",
           "headers": {
             "X-SuperFaktura-Email": "user@example.com",
             "X-SuperFaktura-API-Key": "user-key",
-            "X-SuperFaktura-Country": "sk",
-            "X-SuperFaktura-Company-ID": "optional"
+            "X-SuperFaktura-Country": "sk"
           }
         }
       }
@@ -45,13 +50,39 @@ def get_credentials_from_context(context: Context = None) -> tuple:
             os.getenv("SUPERFAKTURA_COUNTRY", "sk"),
         )
 
-    # Try to get credentials from request headers (for HTTP/SSE transport)
+    # Try to get credentials from request query params (for Smithery HTTP deployment)
+    request_params = getattr(context, "request_params", {}) or {}
+
+    # Try to get credentials from request headers (for FastMCP Cloud)
     headers = getattr(context, "headers", {}) or {}
 
-    email = headers.get("x-superfaktura-email") or os.getenv("SUPERFAKTURA_EMAIL")
-    apikey = headers.get("x-superfaktura-api-key") or os.getenv("SUPERFAKTURA_API_KEY")
-    company_id = headers.get("x-superfaktura-company-id") or os.getenv("SUPERFAKTURA_COMPANY_ID")
-    country = headers.get("x-superfaktura-country") or os.getenv("SUPERFAKTURA_COUNTRY", "sk")
+    # Priority: query params > headers > env vars
+    email = (
+        request_params.get("email") or
+        headers.get("x-superfaktura-email") or
+        os.getenv("SUPERFAKTURA_EMAIL")
+    )
+    apikey = (
+        request_params.get("apiKey") or
+        headers.get("x-superfaktura-api-key") or
+        os.getenv("SUPERFAKTURA_API_KEY")
+    )
+    company_id = (
+        request_params.get("companyId") or
+        headers.get("x-superfaktura-company-id") or
+        os.getenv("SUPERFAKTURA_COMPANY_ID")
+    )
+    country = (
+        request_params.get("country") or
+        headers.get("x-superfaktura-country") or
+        os.getenv("SUPERFAKTURA_COUNTRY", "sk")
+    )
+
+    # Also check for apiUrl override
+    api_url = (
+        request_params.get("apiUrl") or
+        os.getenv("SUPERFAKTURA_API_URL")
+    )
 
     return email, apikey, company_id, country
 
@@ -1301,9 +1332,9 @@ context: Context = None,
 if __name__ == "__main__":
     import sys
 
-    # Check if running in Smithery/hosted environment
+    # Run as HTTP server for Smithery deployment (supports session config)
+    # Users configure credentials when connecting to the hosted server
     if os.getenv("SMITHERY") or os.getenv("PORT") or "--http" in sys.argv:
-        # Run as HTTP server for hosted deployment
         import uvicorn
         app = mcp.get_asgi_app()
         port = int(os.getenv("PORT", 8000))
