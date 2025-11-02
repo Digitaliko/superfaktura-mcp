@@ -133,7 +133,7 @@ npx @modelcontextprotocol/inspector python server.py
 Implementation based on:
 - [SuperFaktura Official PHP API Client](https://github.com/superfaktura/apiclient)
 - [SuperFaktura REST API Documentation](https://github.com/superfaktura/docs)
-- [Community OpenAPI Specification](https://github.com/xseman/superfaktura.openapi)
+- [Community OpenAPI Specification](https://github.com/xseman/superfaktura.openapi) by [@xseman](https://github.com/xseman)
 
 ## License
 
