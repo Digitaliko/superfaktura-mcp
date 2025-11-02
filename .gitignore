@@ -9,3 +9,4 @@ env/
 ENV/
 *.log
 .DS_Store
+claude_desktop_config.json

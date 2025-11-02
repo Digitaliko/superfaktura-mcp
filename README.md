@@ -56,6 +56,12 @@ SUPERFAKTURA_COUNTRY=sk
 - `sandbox-sk` - Slovakia Sandbox
 - `sandbox-cz` - Czech Republic Sandbox
 
+**Custom API URL (optional):**
+For sandbox or custom environments, you can override the country-based URL:
+```
+SUPERFAKTURA_API_URL=https://sandbox.superfaktura.sk
+```
+
 ## Getting API Credentials
 
 1. Log in to your SuperFaktura account
@@ -78,12 +84,29 @@ Add to your Claude Desktop config file:
 {
   "mcpServers": {
     "superfaktura": {
-      "command": "python",
+      "command": "python3",
       "args": ["/absolute/path/to/superfaktura-mcp/server.py"],
       "env": {
         "SUPERFAKTURA_EMAIL": "your-email@example.com",
         "SUPERFAKTURA_API_KEY": "your-api-key-here",
         "SUPERFAKTURA_COUNTRY": "sk"
+      }
+    }
+  }
+}
+```
+
+For sandbox environment:
+```json
+{
+  "mcpServers": {
+    "superfaktura": {
+      "command": "python3",
+      "args": ["/absolute/path/to/superfaktura-mcp/server.py"],
+      "env": {
+        "SUPERFAKTURA_EMAIL": "your-email@example.com",
+        "SUPERFAKTURA_API_KEY": "your-api-key-here",
+        "SUPERFAKTURA_API_URL": "https://sandbox.superfaktura.sk"
       }
     }
   }

@@ -26,14 +26,17 @@ class SuperFakturaClient:
     def __init__(self):
         self.email = os.getenv("SUPERFAKTURA_EMAIL")
         self.api_key = os.getenv("SUPERFAKTURA_API_KEY")
-        self.country = os.getenv("SUPERFAKTURA_COUNTRY", "sk")
 
         if not self.email or not self.api_key:
             raise ValueError("SUPERFAKTURA_EMAIL and SUPERFAKTURA_API_KEY must be set")
 
-        self.base_url = BASE_URLS.get(self.country)
+        # Support custom API URL (useful for sandbox) or use country-based URL
+        self.base_url = os.getenv("SUPERFAKTURA_API_URL")
         if not self.base_url:
-            raise ValueError(f"Invalid country code: {self.country}")
+            country = os.getenv("SUPERFAKTURA_COUNTRY", "sk")
+            self.base_url = BASE_URLS.get(country)
+            if not self.base_url:
+                raise ValueError(f"Invalid country code: {country}")
 
     def _get_headers(self) -> Dict[str, str]:
         """Generate authentication headers."""

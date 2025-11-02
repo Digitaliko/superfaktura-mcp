@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "Apache-2.0"}
 authors = [
-    {name = "Filip Papranec", email = "filip.papranec@digitaliko.com"}
+    {name = "Filip Papranec", email = "filip@digitaliko.com"}
 ]
 
 dependencies = [
