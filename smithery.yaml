@@ -1,5 +1,8 @@
 # Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
 
+build:
+  dockerBuildPath: .
+
 startCommand:
   type: stdio
   configSchema:
@@ -58,3 +61,7 @@ startCommand:
         env: env
       };
     }
+  exampleConfig:
+    email: "user@example.com"
+    apiKey: "your-api-key"
+    country: "sk"
