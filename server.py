@@ -1330,15 +1330,6 @@ context: Context = None,
 
 
 if __name__ == "__main__":
-    import sys
-
-    # Run as HTTP server for Smithery deployment (supports session config)
-    # Users configure credentials when connecting to the hosted server
-    if os.getenv("SMITHERY") or os.getenv("PORT") or "--http" in sys.argv:
-        import uvicorn
-        app = mcp.get_asgi_app()
-        port = int(os.getenv("PORT", 8000))
-        uvicorn.run(app, host="0.0.0.0", port=port)
-    else:
-        # Run as stdio for local Claude Desktop
-        mcp.run(transport="stdio")
+    # Always run as stdio - server runs locally on user's machine
+    # Smithery distributes it, but each user runs their own instance with their credentials
+    mcp.run(transport="stdio")
