@@ -1,64 +1,9 @@
 # Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
 
+runtime: "container"
+build:
+  dockerfile: "Dockerfile"
+  dockerBuildPath: "."
+
 startCommand:
-  type: stdio
-  configSchema:
-    # JSON Schema defining the configuration options for the MCP.
-    type: object
-    required:
-      - email
-      - apiKey
-    properties:
-      email:
-        type: string
-        description: Your SuperFaktura account email address
-        title: Email
-      apiKey:
-        type: string
-        description: API key from SuperFaktura Tools → API
-        title: API Key
-      country:
-        type: string
-        description: Country code (sk, cz, at, sandbox-sk, sandbox-cz)
-        title: Country
-        default: sk
-        enum:
-          - sk
-          - cz
-          - at
-          - sandbox-sk
-          - sandbox-cz
-      companyId:
-        type: string
-        description: Company ID (optional, for multi-company accounts)
-        title: Company ID
-      apiUrl:
-        type: string
-        description: Custom API URL (optional, overrides country-based URL)
-        title: API URL
-  commandFunction: |-
-    (config) => {
-      const env = {
-        SUPERFAKTURA_EMAIL: config.email,
-        SUPERFAKTURA_API_KEY: config.apiKey,
-        SUPERFAKTURA_COUNTRY: config.country || 'sk'
-      };
-
-      if (config.companyId) {
-        env.SUPERFAKTURA_COMPANY_ID = config.companyId;
-      }
-
-      if (config.apiUrl) {
-        env.SUPERFAKTURA_API_URL = config.apiUrl;
-      }
-
-      return {
-        command: 'python3',
-        args: ['server.py'],
-        env: env
-      };
-    }
-  exampleConfig:
-    email: "user@example.com"
-    apiKey: "your-api-key"
-    country: "sk"
+  type: "http"

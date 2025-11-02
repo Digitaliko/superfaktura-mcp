@@ -1299,4 +1299,15 @@ context: Context = None,
 
 
 if __name__ == "__main__":
-    mcp.run(transport="stdio")
+    import sys
+
+    # Check if running in Smithery/hosted environment
+    if os.getenv("SMITHERY") or os.getenv("PORT") or "--http" in sys.argv:
+        # Run as HTTP server for hosted deployment
+        import uvicorn
+        app = mcp.get_asgi_app()
+        port = int(os.getenv("PORT", 8000))
+        uvicorn.run(app, host="0.0.0.0", port=port)
+    else:
+        # Run as stdio for local Claude Desktop
+        mcp.run(transport="stdio")
