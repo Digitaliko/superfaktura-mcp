@@ -210,26 +210,31 @@ def _get_client(context: Context = None) -> SuperFakturaClient:
     """
     Get SuperFaktura client with credentials from context or environment.
 
-    For public MCP deployments, credentials come from custom headers in
-    Claude Desktop config. For local/single-tenant, uses environment variables.
+    For Smithery HTTP: credentials come from URL query parameters
+    For FastMCP Cloud: credentials come from custom headers
+    For local stdio: credentials from environment variables
 
     Args:
-        context: FastMCP context containing request headers
+        context: FastMCP context containing request params/headers
 
     Returns:
         Configured SuperFakturaClient instance
 
     Raises:
-        ValueError: If no credentials available
+        ValueError: If no credentials available (provides helpful message)
     """
     email, apikey, company_id, country = get_credentials_from_context(context)
 
     if not email or not apikey:
         raise ValueError(
-            "SuperFaktura credentials not found. "
-            "Configure credentials in Claude Desktop config headers "
-            "(X-SuperFaktura-Email, X-SuperFaktura-API-Key) "
-            "or set SUPERFAKTURA_EMAIL and SUPERFAKTURA_API_KEY environment variables."
+            "SuperFaktura credentials required. Please provide:\n\n"
+            "For Smithery HTTP deployment:\n"
+            "  Connect with URL: https://server.smithery.ai/@Digitaliko/superfaktura-mcp/mcp?email=YOUR_EMAIL&apiKey=YOUR_KEY&country=sk\n\n"
+            "For FastMCP Cloud:\n"
+            "  Add headers: X-SuperFaktura-Email, X-SuperFaktura-API-Key\n\n"
+            "For local stdio:\n"
+            "  Set env vars: SUPERFAKTURA_EMAIL, SUPERFAKTURA_API_KEY\n\n"
+            "Get credentials from: Tools → API in your SuperFaktura account"
         )
 
     return SuperFakturaClient(
