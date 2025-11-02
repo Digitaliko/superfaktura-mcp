@@ -1330,6 +1330,18 @@ context: Context = None,
 
 
 if __name__ == "__main__":
-    # Always run as stdio - server runs locally on user's machine
-    # Smithery distributes it, but each user runs their own instance with their credentials
-    mcp.run(transport="stdio")
+    import sys
+
+    # Support both HTTP (for Smithery hosted) and stdio (for local)
+    if "--http" in sys.argv or os.getenv("PORT"):
+        # HTTP mode for Smithery hosted deployment
+        # Users connect with credentials in URL query params
+        import uvicorn
+        app = mcp.get_asgi_app()
+        port = int(os.getenv("PORT", 8000))
+        print(f"Starting HTTP server on port {port}")
+        uvicorn.run(app, host="0.0.0.0", port=port)
+    else:
+        # stdio mode for local Claude Desktop
+        # Users provide credentials via env vars
+        mcp.run(transport="stdio")
