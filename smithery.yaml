@@ -1,160 +1,60 @@
-name: superfaktura-mcp
-displayName: SuperFaktura MCP Server
-description: Model Context Protocol server for SuperFaktura invoicing system. Manage invoices, clients, and expenses with 19 comprehensive tools supporting 100+ parameters.
-version: 2.0.0
-license: Apache-2.0
+# Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
 
-author:
-  name: Filip Papranec
-  github: fillippofilip95
-  email: fpapranecx@gmail.com
-
-repository:
-  type: git
-  url: https://github.com/Digitaliko/superfaktura-mcp
-
-categories:
-  - business
-  - finance
-  - invoicing
-  - accounting
-
-tags:
-  - superfaktura
-  - invoicing
-  - accounting
-  - finance
-  - crm
-  - expenses
-  - slovakia
-  - czech-republic
-  - austria
-
-features:
-  - Invoice management (create, list, edit, delete, send, PDF generation)
-  - Client management (full CRUD with 30+ fields)
-  - Expense tracking (with file attachments)
-  - Advanced filtering (25+ filter options)
-  - Multi-tenant support (public MCP server or local deployment)
-  - Multi-country support (SK, CZ, AT + sandboxes)
-
-requirements:
-  python: ">=3.8"
-
-installation:
-  local:
-    command: python3
-    args:
-      - server.py
-    env:
-      SUPERFAKTURA_EMAIL:
-        description: Your SuperFaktura account email
-        required: true
-        example: "user@example.com"
-      SUPERFAKTURA_API_KEY:
+startCommand:
+  type: stdio
+  configSchema:
+    # JSON Schema defining the configuration options for the MCP.
+    type: object
+    required:
+      - email
+      - apiKey
+    properties:
+      email:
+        type: string
+        description: Your SuperFaktura account email address
+        title: Email
+      apiKey:
+        type: string
         description: API key from SuperFaktura Tools → API
-        required: true
-        example: "your-api-key-here"
-      SUPERFAKTURA_COUNTRY:
+        title: API Key
+      country:
+        type: string
         description: Country code (sk, cz, at, sandbox-sk, sandbox-cz)
-        required: false
-        default: "sk"
-      SUPERFAKTURA_COMPANY_ID:
+        title: Country
+        default: sk
+        enum:
+          - sk
+          - cz
+          - at
+          - sandbox-sk
+          - sandbox-cz
+      companyId:
+        type: string
         description: Company ID (optional, for multi-company accounts)
-        required: false
-      SUPERFAKTURA_API_URL:
-        description: Custom API URL (overrides country-based URL)
-        required: false
-        example: "https://sandbox.superfaktura.sk"
+        title: Company ID
+      apiUrl:
+        type: string
+        description: Custom API URL (optional, overrides country-based URL)
+        title: API URL
+  commandFunction: |-
+    (config) => {
+      const env = {
+        SUPERFAKTURA_EMAIL: config.email,
+        SUPERFAKTURA_API_KEY: config.apiKey,
+        SUPERFAKTURA_COUNTRY: config.country || 'sk'
+      };
 
-  remote:
-    url: https://superfaktura.fastmcp.app/mcp
-    headers:
-      X-SuperFaktura-Email:
-        description: Your SuperFaktura account email
-        required: true
-        example: "user@example.com"
-      X-SuperFaktura-API-Key:
-        description: API key from SuperFaktura Tools → API
-        required: true
-        example: "your-api-key-here"
-      X-SuperFaktura-Country:
-        description: Country code (sk, cz, at, sandbox-sk, sandbox-cz)
-        required: false
-        default: "sk"
-      X-SuperFaktura-Company-ID:
-        description: Company ID (optional, for multi-company accounts)
-        required: false
+      if (config.companyId) {
+        env.SUPERFAKTURA_COMPANY_ID = config.companyId;
+      }
 
-credentials:
-  instructions: |
-    To get your SuperFaktura API credentials:
+      if (config.apiUrl) {
+        env.SUPERFAKTURA_API_URL = config.apiUrl;
+      }
 
-    1. Log in to your SuperFaktura account:
-       - Slovakia: https://moja.superfaktura.sk
-       - Czech Republic: https://moje.superfaktura.cz
-       - Austria: https://meine.superfaktura.at
-
-    2. Navigate to **Tools** → **API**
-
-    3. Copy your API key
-
-    4. Use your login email as SUPERFAKTURA_EMAIL
-
-    For sandbox/testing:
-    - Use sandbox-sk or sandbox-cz as the country code
-    - Sandbox URL: https://sandbox.superfaktura.sk
-
-tools:
-  - name: create_invoice
-    description: Create invoices with 40+ parameters
-  - name: list_invoices
-    description: List and filter invoices with 25+ filter options
-  - name: get_invoice
-    description: Get detailed invoice information
-  - name: edit_invoice
-    description: Edit existing invoices
-  - name: delete_invoice
-    description: Delete invoices
-  - name: send_invoice
-    description: Send invoices via email
-  - name: mark_invoice_paid
-    description: Record invoice payments
-  - name: get_invoice_pdf
-    description: Get invoice PDF download URL
-  - name: set_invoice_language
-    description: Set invoice language
-  - name: create_client
-    description: Create clients with 30+ fields
-  - name: list_clients
-    description: List and filter clients
-  - name: get_client
-    description: Get detailed client information
-  - name: update_client
-    description: Update client details
-  - name: delete_client
-    description: Delete clients
-  - name: create_expense
-    description: Create expenses with file attachments
-  - name: list_expenses
-    description: List and filter expenses
-  - name: get_expense
-    description: Get detailed expense information
-  - name: edit_expense
-    description: Edit existing expenses
-  - name: delete_expense
-    description: Delete expenses
-
-documentation:
-  readme: https://github.com/Digitaliko/superfaktura-mcp/blob/main/README.md
-  api: https://github.com/Digitaliko/superfaktura-mcp/blob/main/docs/API.md
-  deployment: https://github.com/Digitaliko/superfaktura-mcp/blob/main/docs/DEPLOYMENT.md
-  officialApi: https://github.com/superfaktura/docs
-
-support:
-  issues: https://github.com/Digitaliko/superfaktura-mcp/issues
-  discussions: https://github.com/Digitaliko/superfaktura-mcp/discussions
-
-links:
-  homepage: https://github.com/Digitaliko/superfaktura-mcp
-  superfaktura: https://www.superfaktura.sk
+      return {
+        command: 'python3',
+        args: ['server.py'],
+        env: env
+      };
+    }
