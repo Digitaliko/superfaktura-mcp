@@ -6,6 +6,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 from fastmcp import FastMCP, Context
 from dotenv import load_dotenv
+from jsonpath_ng import parse
 
 load_dotenv()
 
@@ -195,6 +196,47 @@ class SuperFakturaClient:
     def delete(self, endpoint: str) -> Dict[str, Any]:
         """DELETE request."""
         return self._request("DELETE", endpoint)
+
+
+def _apply_jsonpath_filter(data: Dict[str, Any], fields_filter: Optional[str]) -> Dict[str, Any]:
+    """
+    Apply JSONPath filter to API response.
+
+    Args:
+        data: API response data to filter
+        fields_filter: JSONPath expression to extract specific fields (None = return all)
+
+    Returns:
+        Filtered data or original data if filter is None or invalid
+
+    Examples:
+        $.items[*].Invoice.id - Extract only invoice IDs from items
+        $.items[*].Client.name - Extract only client names
+        $..email - All email fields recursively
+    """
+    if fields_filter is None:
+        return data
+
+    try:
+        jsonpath_expr = parse(fields_filter)
+        matches = [match.value for match in jsonpath_expr.find(data)]
+
+        # If we got matches, return them in a structured way
+        if matches:
+            return {"filtered_results": matches, "filter_applied": fields_filter}
+        else:
+            return {
+                "filtered_results": [],
+                "filter_applied": fields_filter,
+                "message": "No matches found for the given JSONPath expression"
+            }
+    except Exception as e:
+        # If JSONPath parsing fails, return original data with error
+        return {
+            "error": f"Invalid JSONPath expression: {str(e)}",
+            "filter_applied": fields_filter,
+            "original_data": data
+        }
 
 
 # Global client for single-tenant deployments using environment variables
@@ -474,7 +516,7 @@ def list_invoices(
     search: Optional[str] = None,
     tag: Optional[int] = None,
     ignore: Optional[str] = None,
-
+    fields_filter: Optional[str] = None,
 context: Context = None,
 ) -> Dict[str, Any]:
     """
@@ -507,9 +549,11 @@ context: Context = None,
         search: Base64 encoded search string
         tag: Filter by tag ID
         ignore: Invoice IDs to exclude. Use | for multiple (e.g., '1|2|3')
+        fields_filter: JSONPath expression to filter returned fields (None = return all fields)
+                      Examples: '$.items[*].Invoice.id' for IDs only, '$..name' for all names
 
     Returns:
-        List of invoices with pagination info and metadata
+        List of invoices with pagination info and metadata (or filtered results if fields_filter provided)
     """
     # Validate per_page max
     if per_page > 200:
@@ -584,23 +628,29 @@ context: Context = None,
         params.append(f"ignore:{ignore}")
 
     endpoint = f"invoices/index.json/{'/'.join(params)}"
-    return _get_client(context).get(endpoint)
+    response = _get_client(context).get(endpoint)
+    return _apply_jsonpath_filter(response, fields_filter)
 
 
 @mcp.tool()
-def get_invoice(invoice_id: int,
-context: Context = None,
+def get_invoice(
+    invoice_id: int,
+    fields_filter: Optional[str] = None,
+    context: Context = None,
 ) -> Dict[str, Any]:
     """
     Get detailed information about a specific invoice.
 
     Args:
         invoice_id: ID of the invoice to retrieve
+        fields_filter: JSONPath expression to filter returned fields (None = return all fields)
+                      Examples: '$.Invoice.id' for ID only, '$.Invoice.name' for name only
 
     Returns:
-        Invoice details including items, client info, and payment status
+        Invoice details including items, client info, and payment status (or filtered results if fields_filter provided)
     """
-    return _get_client(context).get(f"invoices/view/{invoice_id}.json")
+    response = _get_client(context).get(f"invoices/view/{invoice_id}.json")
+    return _apply_jsonpath_filter(response, fields_filter)
 
 
 @mcp.tool()
@@ -820,7 +870,7 @@ def list_clients(
     created_to: Optional[str] = None,
     modified_since: Optional[str] = None,
     modified_to: Optional[str] = None,
-
+    fields_filter: Optional[str] = None,
 context: Context = None,
 ) -> Dict[str, Any]:
     """
@@ -840,9 +890,11 @@ context: Context = None,
         created_to: Creation date to (YYYY-MM-DD, requires created:3)
         modified_since: Last modification date from (YYYY-MM-DD, requires modified:3)
         modified_to: Last modification date to (YYYY-MM-DD, requires modified:3)
+        fields_filter: JSONPath expression to filter returned fields (None = return all fields)
+                      Examples: '$.items[*].Client.name' for names only, '$.items[*].Client.email' for emails
 
     Returns:
-        List of clients with pagination info and metadata
+        List of clients with pagination info and metadata (or filtered results if fields_filter provided)
     """
     params = [
         f"page:{page}",
@@ -877,22 +929,29 @@ context: Context = None,
             params.append(f"modified_to:{modified_to}")
 
     endpoint = f"clients/index.json/{'/'.join(params)}"
-    return _get_client(context).get(endpoint)
+    response = _get_client(context).get(endpoint)
+    return _apply_jsonpath_filter(response, fields_filter)
 
 
 @mcp.tool()
-def get_client(client_id: int, context: Context = None,
+def get_client(
+    client_id: int,
+    fields_filter: Optional[str] = None,
+    context: Context = None,
 ) -> Dict[str, Any]:
     """
     Get detailed information about a specific client.
 
     Args:
         client_id: ID of the client to retrieve
+        fields_filter: JSONPath expression to filter returned fields (None = return all fields)
+                      Examples: '$.Client.name' for name only, '$.Client.email' for email only
 
     Returns:
-        Client details including contact information and invoice history
+        Client details including contact information and invoice history (or filtered results if fields_filter provided)
     """
-    return _get_client(context).get(f"clients/view/{client_id}.json")
+    response = _get_client(context).get(f"clients/view/{client_id}.json")
+    return _apply_jsonpath_filter(response, fields_filter)
 
 
 @mcp.tool()
@@ -1073,7 +1132,7 @@ def list_expenses(
     search: Optional[str] = None,
     status: Optional[str] = None,
     type: Optional[str] = None,
-
+    fields_filter: Optional[str] = None,
 context: Context = None,
 ) -> Dict[str, Any]:
     """
@@ -1100,9 +1159,11 @@ context: Context = None,
         search: Base64 encoded search string
         status: Expense status filter. Use | for multiple (e.g., '1|2')
         type: Expense type filter
+        fields_filter: JSONPath expression to filter returned fields (None = return all fields)
+                      Examples: '$.items[*].Expense.name' for names only, '$.items[*].Expense.amount' for amounts
 
     Returns:
-        List of expenses with pagination info and metadata
+        List of expenses with pagination info and metadata (or filtered results if fields_filter provided)
     """
     # Validate per_page max
     if per_page > 100:
@@ -1159,23 +1220,29 @@ context: Context = None,
         params.append(f"type:{type}")
 
     endpoint = f"expenses/index.json/{'/'.join(params)}"
-    return _get_client(context).get(endpoint)
+    response = _get_client(context).get(endpoint)
+    return _apply_jsonpath_filter(response, fields_filter)
 
 
 @mcp.tool()
-def get_expense(expense_id: int,
-context: Context = None,
+def get_expense(
+    expense_id: int,
+    fields_filter: Optional[str] = None,
+    context: Context = None,
 ) -> Dict[str, Any]:
     """
     Get detailed information about a specific expense.
 
     Args:
         expense_id: ID of the expense to retrieve
+        fields_filter: JSONPath expression to filter returned fields (None = return all fields)
+                      Examples: '$.Expense.name' for name only, '$.Expense.amount' for amount only
 
     Returns:
-        Expense details
+        Expense details (or filtered results if fields_filter provided)
     """
-    return _get_client(context).get(f"expenses/view/{expense_id}.json")
+    response = _get_client(context).get(f"expenses/view/{expense_id}.json")
+    return _apply_jsonpath_filter(response, fields_filter)
 
 
 # ============================================================================
