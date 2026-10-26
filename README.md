@@ -2,7 +2,7 @@
 
 Model Context Protocol (MCP) server for SuperFaktura invoicing system. Enables AI assistants to interact with SuperFaktura API for managing invoices, clients, and expenses.
 
-**Author:** [@fillippofilip95](https://github.com/fillippofilip95)
+**Author:** [@filippofilip95](https://github.com/filippofilip95), [Digitaliko](https://www.digitaliko.com)
 
 ---
 
@@ -143,8 +143,12 @@ Implementation based on:
 
 ## License
 
-Apache-2.0
+Apache-2.0, see [LICENSE](LICENSE).
 
 ## Contributing
 
 Contributions welcome. Submit issues or pull requests for improvements.
+
+## About
+
+Built and maintained by [Digitaliko](https://www.digitaliko.com). How we design MCP servers like this one: [How to build an MCP server](https://www.digitaliko.com/blog/how-to-build-an-mcp-server).
