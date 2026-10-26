@@ -61,6 +61,7 @@ List and filter invoices with advanced options.
   - `search` - Base64 encoded full-text search
 - **Tags**: `tag` - Tag ID
 - **Exclusions**: `ignore` - Invoice IDs to exclude (use `|` separator)
+- **Field filtering**: `fields_filter` - Extract specific fields as array of arrays (rows)
 
 ### get_invoice
 
@@ -68,8 +69,9 @@ Get detailed information about a specific invoice.
 
 **Parameters:**
 - `invoice_id` (int) - Invoice ID
+- `fields_filter` (list of strings, optional) - Extract specific fields as array of arrays (rows)
 
-**Returns:** Invoice details including items, client info, payment status
+**Returns:** Invoice details including items, client info, payment status (or array of rows if fields_filter provided)
 
 ### edit_invoice
 
@@ -167,6 +169,7 @@ List clients with filtering and sorting.
 - **Time ranges**:
   - `created_since`, `created_to`
   - `modified_since`, `modified_to`
+- **Field filtering**: `fields_filter` - Extract specific fields as array of arrays (rows)
 
 ### get_client
 
@@ -174,8 +177,9 @@ Get detailed information about a specific client.
 
 **Parameters:**
 - `client_id` (int) - Client ID
+- `fields_filter` (list of strings, optional) - Extract specific fields as array of arrays (rows)
 
-**Returns:** Client details including contact information and invoice history
+**Returns:** Client details including contact information and invoice history (or array of rows if fields_filter provided)
 
 ### update_client
 
@@ -245,6 +249,7 @@ List expenses with comprehensive filtering.
   - `search` - Base64 encoded search
   - `status` - Use `|` for multiple
   - `type`
+- **Field filtering**: `fields_filter` - Extract specific fields as array of arrays (rows)
 
 ### get_expense
 
@@ -252,8 +257,9 @@ Get detailed information about a specific expense.
 
 **Parameters:**
 - `expense_id` (int) - Expense ID
+- `fields_filter` (list of strings, optional) - Extract specific fields as array of arrays (rows)
 
-**Returns:** Expense details
+**Returns:** Expense details (or array of rows if fields_filter provided)
 
 ### edit_expense
 
@@ -291,6 +297,47 @@ When providing base64 encoded search strings, replace special characters:
 
 ### Multiple Values
 Use `|` as separator for multiple values (e.g., `type:regular|proforma`)
+
+### Field Filtering
+
+The `fields_filter` parameter allows you to extract specific fields from API responses as **array of arrays** (rows), making it easy to process tabular data.
+
+**Format:** List of dot-separated field paths
+
+**Returns:** Array of arrays where each inner array is a row containing values for all requested fields
+
+**Examples:**
+
+1. **Extract multiple invoice fields from a list:**
+   ```
+   fields_filter: ["items.Invoice.id", "items.Invoice.name", "items.Invoice.total"]
+   Returns: [[1, "Invoice A", 100.50], [2, "Invoice B", 250.00], ...]
+   ```
+
+2. **Extract single invoice fields:**
+   ```
+   fields_filter: ["Invoice.id", "Invoice.name"]
+   Returns: [[123, "My Invoice"]]
+   ```
+
+3. **Extract client names from invoice list:**
+   ```
+   fields_filter: ["items.Client.name", "items.Client.email"]
+   Returns: [["Company A", "a@example.com"], ["Company B", "b@example.com"], ...]
+   ```
+
+4. **Extract metadata:**
+   ```
+   fields_filter: ["itemCount", "pageCount"]
+   Returns: [[42, 3]]
+   ```
+
+**Key features:**
+- Each row corresponds to one record from the source data
+- Field order in the result matches the order specified in `fields_filter`
+- Missing values are represented as `null`
+- Works with nested paths (e.g., `items.Invoice.Client.name`)
+- Perfect for tabular processing, CSV export, or database insertion
 
 ---
 

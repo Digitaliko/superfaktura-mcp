@@ -197,6 +197,120 @@ class SuperFakturaClient:
         return self._request("DELETE", endpoint)
 
 
+def _get_nested_value(data: Any, path: str) -> Any:
+    """
+    Get value from nested dictionary using dot notation.
+
+    Args:
+        data: Data to extract from (dict, list, or primitive)
+        path: Dot-separated path (e.g., "Invoice.id" or "items.0.Client.name")
+
+    Returns:
+        Extracted value or None if path doesn't exist
+    """
+    if not path:
+        return data
+
+    parts = path.split(".", 1)
+    key = parts[0]
+    remaining = parts[1] if len(parts) > 1 else ""
+
+    # Handle list indexing (e.g., "items" when data is a list)
+    if isinstance(data, list):
+        # If key is a number, treat as index
+        if key.isdigit():
+            idx = int(key)
+            if 0 <= idx < len(data):
+                return _get_nested_value(data[idx], remaining)
+            return None
+        # Otherwise, apply to all items in the list
+        results = []
+        for item in data:
+            val = _get_nested_value(item, path)
+            if val is not None:
+                results.append(val)
+        return results if results else None
+
+    # Handle dictionary access
+    if isinstance(data, dict):
+        if key not in data:
+            return None
+        return _get_nested_value(data[key], remaining)
+
+    # Can't traverse further
+    return None
+
+
+def _apply_fields_filter(data: Dict[str, Any], fields_filter: Optional[List[str]]) -> Any:
+    """
+    Filter API response to return only specified fields as array of arrays (rows).
+
+    Args:
+        data: API response data to filter
+        fields_filter: List of dot-separated field paths to extract
+                      - None (not passed): return all data unchanged
+                      - [] (empty array): return empty array
+                      - ["field1", "field2"]: return filtered fields as array of arrays
+
+    Returns:
+        - Original data if fields_filter is None
+        - Empty array if fields_filter is []
+        - Array of arrays where each inner array contains values for requested attributes (one row per record)
+
+    Examples:
+        None -> {original response data}
+        [] -> []
+        ["items.Invoice.id", "items.Invoice.name"] -> [[1, "Invoice A"], [2, "Invoice B"], ...]
+        ["Invoice.id", "Invoice.name"] -> [[123, "My Invoice"]]
+        ["itemCount"] -> [[42]]
+    """
+    if fields_filter is None:
+        return data
+
+    if not fields_filter:  # empty list
+        return []
+
+    # Extract all values for each field path
+    extracted_values = []
+    for field_path in fields_filter:
+        value = _get_nested_value(data, field_path)
+        extracted_values.append(value)
+
+    # Check if all values are lists (meaning we're extracting from array data)
+    all_lists = all(isinstance(v, list) for v in extracted_values if v is not None)
+
+    if all_lists and extracted_values:
+        # Get all non-None list values
+        list_values = [v for v in extracted_values if v is not None and isinstance(v, list)]
+
+        if not list_values:
+            return []
+
+        # Find the maximum length (in case lists have different lengths)
+        max_len = max(len(v) for v in list_values)
+
+        # Zip values together into rows
+        # Use None for missing values if lists have different lengths
+        rows = []
+        for i in range(max_len):
+            row = []
+            for value in extracted_values:
+                if value is None:
+                    row.append(None)
+                elif isinstance(value, list):
+                    row.append(value[i] if i < len(value) else None)
+                else:
+                    # Scalar value - repeat for each row
+                    row.append(value)
+            rows.append(row)
+
+        return rows
+    else:
+        # All scalar values or mixed - return as single row
+        row = [v for v in extracted_values]
+        return [row]
+
+
 # Global client for single-tenant deployments using environment variables
 # For multi-tenant: create client instances with SuperFakturaClient(email, api_key)
 try:
@@ -474,9 +588,9 @@ def list_invoices(
     search: Optional[str] = None,
     tag: Optional[int] = None,
     ignore: Optional[str] = None,
-
+    fields_filter: Optional[List[str]] = None,
 context: Context = None,
-) -> Dict[str, Any]:
+) -> Any:
     """
     List invoices with comprehensive filtering and sorting.
 
@@ -507,9 +621,19 @@ context: Context = None,
         search: Base64 encoded search string
         tag: Filter by tag ID
         ignore: Invoice IDs to exclude. Use | for multiple (e.g., '1|2|3')
+        fields_filter: List of field paths to extract as array of arrays (rows)
+                      - None (default): return all fields unchanged
+                      - []: return empty array
+                      - ["field1", "field2"]: return only specified fields as array of arrays
+                      Examples:
+                        - None -> {full response with all fields}
+                        - [] -> []
+                        - ["items.Invoice.id", "items.Invoice.name"] -> [[1, "Invoice A"], [2, "Invoice B"], ...]
+                        - ["items.Invoice.total", "items.Client.name"] -> [[100.50, "Company A"], [250.00, "Company B"], ...]
+                        - ["itemCount", "pageCount"] -> [[42, 3]]
 
     Returns:
-        List of invoices with pagination info and metadata
+        List of invoices with pagination info and metadata (if fields_filter is None), or array of arrays if fields_filter is specified
     """
     # Validate per_page max
     if per_page > 200:
@@ -519,18 +643,10 @@ context: Context = None,
         f"page:{page}",
         f"per_page:{per_page}",
         f"listinfo:{listinfo}",
-        f"direction:{direction}",
-        f"sort:{sort}",
     ]
 
-    if type:
-        params.append(f"type:{type}")
-    if status:
-        params.append(f"status:{status}")
-    if client_id:
-        params.append(f"client_id:{client_id}")
-
-    # Time-based filters
+    # Time-based filters - add BEFORE sort to avoid URL parsing conflicts
+    # when sort field name matches a filter field name (e.g., sort:delivery vs delivery:3)
     if created_since or created_to:
         params.append("created:3")
         if created_since:
@@ -559,6 +675,17 @@ context: Context = None,
         if paydate_to:
             params.append(f"paydate_to:{paydate_to}")
 
+    # Add sort after date filters to avoid conflicts
+    params.append(f"direction:{direction}")
+    params.append(f"sort:{sort}")
+
+    if type:
+        params.append(f"type:{type}")
+    if status:
+        params.append(f"status:{status}")
+    if client_id:
+        params.append(f"client_id:{client_id}")
+
     # Amount filters
     if amount_from is not None:
         params.append(f"amount_from:{amount_from}")
@@ -584,23 +711,37 @@ context: Context = None,
         params.append(f"ignore:{ignore}")
 
     endpoint = f"invoices/index.json/{'/'.join(params)}"
-    return _get_client(context).get(endpoint)
+    response = _get_client(context).get(endpoint)
+    return _apply_fields_filter(response, fields_filter)
 
 
 @mcp.tool()
-def get_invoice(invoice_id: int,
-context: Context = None,
-) -> Dict[str, Any]:
+def get_invoice(
+    invoice_id: int,
+    fields_filter: Optional[List[str]] = None,
+    context: Context = None,
+) -> Any:
     """
     Get detailed information about a specific invoice.
 
     Args:
         invoice_id: ID of the invoice to retrieve
+        fields_filter: List of field paths to extract as array of arrays (rows)
+                      - None (default): return all fields unchanged
+                      - []: return empty array
+                      - ["field1", "field2"]: return only specified fields as array of arrays
+                      Examples:
+                        - None -> {full invoice response with all fields}
+                        - [] -> []
+                        - ["Invoice.id", "Invoice.name"] -> [[123, "My Invoice"]]
+                        - ["Invoice.total", "Client.name"] -> [[500.00, "ACME Corp"]]
+                        - ["InvoiceItem.name", "InvoiceItem.unit_price"] -> [["Item A", 10.00], ["Item B", 20.00], ...]
 
     Returns:
-        Invoice details including items, client info, and payment status
+        Invoice details including items, client info, and payment status (if fields_filter is None), or array of arrays if fields_filter is specified
     """
-    return _get_client(context).get(f"invoices/view/{invoice_id}.json")
+    response = _get_client(context).get(f"invoices/view/{invoice_id}.json")
+    return _apply_fields_filter(response, fields_filter)
 
 
 @mcp.tool()
@@ -820,9 +961,9 @@ def list_clients(
     created_to: Optional[str] = None,
     modified_since: Optional[str] = None,
     modified_to: Optional[str] = None,
-
+    fields_filter: Optional[List[str]] = None,
 context: Context = None,
-) -> Dict[str, Any]:
+) -> Any:
     """
     List all clients with comprehensive filtering and sorting.
 
@@ -840,28 +981,28 @@ context: Context = None,
         created_to: Creation date to (YYYY-MM-DD, requires created:3)
         modified_since: Last modification date from (YYYY-MM-DD, requires modified:3)
         modified_to: Last modification date to (YYYY-MM-DD, requires modified:3)
+        fields_filter: List of field paths to extract as array of arrays (rows)
+                      - None (default): return all fields unchanged
+                      - []: return empty array
+                      - ["field1", "field2"]: return only specified fields as array of arrays
+                      Examples:
+                        - None -> {full response with all fields}
+                        - [] -> []
+                        - ["items.Client.name", "items.Client.email"] -> [["ACME Corp", "info@acme.com"], ["Company B", "b@example.com"], ...]
+                        - ["items.Client.ico", "items.Client.dic"] -> [["12345678", "CZ12345678"], ...]
+                        - ["itemCount", "pageCount"] -> [[15, 1]]
 
     Returns:
-        List of clients with pagination info and metadata
+        List of clients with pagination info and metadata (if fields_filter is None), or array of arrays if fields_filter is specified
     """
     params = [
         f"page:{page}",
         f"per_page:{per_page}",
         f"listinfo:{listinfo}",
-        f"direction:{direction}",
-        f"sort:{sort}",
     ]
 
-    if char_filter:
-        params.append(f"char_filter:{char_filter}")
-    if search:
-        params.append(f"search:{search}")
-    if search_uuid:
-        params.append(f"search_uuid:{search_uuid}")
-    if tag:
-        params.append(f"tag:{tag}")
-
-    # Time-based filters
+    # Time-based filters - add BEFORE sort to avoid URL parsing conflicts
+    # when sort field name matches a filter field name (e.g., sort:created vs created:3)
     if created_since or created_to:
         params.append("created:3")
         if created_since:
@@ -876,23 +1017,50 @@ context: Context = None,
         if modified_to:
             params.append(f"modified_to:{modified_to}")
 
+    # Add sort after date filters to avoid conflicts
+    params.append(f"direction:{direction}")
+    params.append(f"sort:{sort}")
+
+    if char_filter:
+        params.append(f"char_filter:{char_filter}")
+    if search:
+        params.append(f"search:{search}")
+    if search_uuid:
+        params.append(f"search_uuid:{search_uuid}")
+    if tag:
+        params.append(f"tag:{tag}")
+
     endpoint = f"clients/index.json/{'/'.join(params)}"
-    return _get_client(context).get(endpoint)
+    response = _get_client(context).get(endpoint)
+    return _apply_fields_filter(response, fields_filter)
 
 
 @mcp.tool()
-def get_client(client_id: int, context: Context = None,
-) -> Dict[str, Any]:
+def get_client(
+    client_id: int,
+    fields_filter: Optional[List[str]] = None,
+    context: Context = None,
+) -> Any:
     """
     Get detailed information about a specific client.
 
     Args:
         client_id: ID of the client to retrieve
+        fields_filter: List of field paths to extract as array of arrays (rows)
+                      - None (default): return all fields unchanged
+                      - []: return empty array
+                      - ["field1", "field2"]: return only specified fields as array of arrays
+                      Examples:
+                        - None -> {full client response with all fields}
+                        - [] -> []
+                        - ["Client.name", "Client.email"] -> [["ACME Corp", "info@acme.com"]]
+                        - ["Client.ico", "Client.dic", "Client.city"] -> [["12345678", "CZ12345678", "Prague"]]
 
     Returns:
-        Client details including contact information and invoice history
+        Client details including contact information and invoice history (if fields_filter is None), or array of arrays if fields_filter is specified
     """
-    return _get_client(context).get(f"clients/view/{client_id}.json")
+    response = _get_client(context).get(f"clients/view/{client_id}.json")
+    return _apply_fields_filter(response, fields_filter)
 
 
 @mcp.tool()
@@ -1073,9 +1241,9 @@ def list_expenses(
     search: Optional[str] = None,
     status: Optional[str] = None,
     type: Optional[str] = None,
-
+    fields_filter: Optional[List[str]] = None,
 context: Context = None,
-) -> Dict[str, Any]:
+) -> Any:
     """
     List expenses with comprehensive filtering and sorting.
 
@@ -1100,9 +1268,19 @@ context: Context = None,
         search: Base64 encoded search string
         status: Expense status filter. Use | for multiple (e.g., '1|2')
         type: Expense type filter
+        fields_filter: List of field paths to extract as array of arrays (rows)
+                      - None (default): return all fields unchanged
+                      - []: return empty array
+                      - ["field1", "field2"]: return only specified fields as array of arrays
+                      Examples:
+                        - None -> {full response with all fields}
+                        - [] -> []
+                        - ["items.Expense.name", "items.Expense.amount"] -> [["Office supplies", 150.00], ["Software license", 99.00], ...]
+                        - ["items.Expense.expense_date", "items.Client.name"] -> [["2025-01-15", "Supplier A"], ...]
+                        - ["itemCount", "pageCount"] -> [[8, 1]]
 
     Returns:
-        List of expenses with pagination info and metadata
+        List of expenses with pagination info and metadata (if fields_filter is None), or array of arrays if fields_filter is specified
     """
     # Validate per_page max
     if per_page > 100:
@@ -1112,20 +1290,10 @@ context: Context = None,
         f"page:{page}",
         f"per_page:{per_page}",
         f"listinfo:{listinfo}",
-        f"direction:{direction}",
-        f"sort:{sort}",
     ]
 
-    if amount_from is not None:
-        params.append(f"amount_from:{amount_from}")
-    if amount_to is not None:
-        params.append(f"amount_to:{amount_to}")
-    if category:
-        params.append(f"category:{category}")
-    if client_id:
-        params.append(f"client_id:{client_id}")
-
-    # Time-based filters
+    # Time-based filters - add BEFORE sort to avoid URL parsing conflicts
+    # when sort field name matches a filter field name (e.g., sort:delivery vs delivery:3)
     if created_since or created_to:
         params.append("created:3")
         if created_since:
@@ -1147,6 +1315,19 @@ context: Context = None,
         if delivery_to:
             params.append(f"delivery_to:{delivery_to}")
 
+    # Add sort after date filters to avoid conflicts
+    params.append(f"direction:{direction}")
+    params.append(f"sort:{sort}")
+
+    if amount_from is not None:
+        params.append(f"amount_from:{amount_from}")
+    if amount_to is not None:
+        params.append(f"amount_to:{amount_to}")
+    if category:
+        params.append(f"category:{category}")
+    if client_id:
+        params.append(f"client_id:{client_id}")
+
     if due:
         params.append(f"due:{due}")
     if payment_type:
@@ -1159,23 +1340,37 @@ context: Context = None,
         params.append(f"type:{type}")
 
     endpoint = f"expenses/index.json/{'/'.join(params)}"
-    return _get_client(context).get(endpoint)
+    response = _get_client(context).get(endpoint)
+    return _apply_fields_filter(response, fields_filter)
 
 
 @mcp.tool()
-def get_expense(expense_id: int,
-context: Context = None,
-) -> Dict[str, Any]:
+def get_expense(
+    expense_id: int,
+    fields_filter: Optional[List[str]] = None,
+    context: Context = None,
+) -> Any:
     """
     Get detailed information about a specific expense.
 
     Args:
         expense_id: ID of the expense to retrieve
+        fields_filter: List of field paths to extract as array of arrays (rows)
+                      - None (default): return all fields unchanged
+                      - []: return empty array
+                      - ["field1", "field2"]: return only specified fields as array of arrays
+                      Examples:
+                        - None -> {full expense response with all fields}
+                        - [] -> []
+                        - ["Expense.name", "Expense.amount"] -> [["Office supplies", 150.00]]
+                        - ["ExpenseItem.name", "ExpenseItem.unit_price"] -> [["Paper", 10.00], ["Pens", 5.00], ...]
+                        - ["Expense.expense_date", "Client.name"] -> [["2025-01-15", "Supplier A"]]
 
     Returns:
-        Expense details
+        Expense details (if fields_filter is None), or array of arrays if fields_filter is specified
     """
-    return _get_client(context).get(f"expenses/view/{expense_id}.json")
+    response = _get_client(context).get(f"expenses/view/{expense_id}.json")
+    return _apply_fields_filter(response, fields_filter)
 
 
 # ============================================================================
@@ -1338,11 +1533,11 @@ if __name__ == "__main__":
     import sys
 
     # Support both HTTP (for Smithery hosted) and stdio (for local)
-    if "--http" in sys.argv or os.getenv("PORT"):
+    if "--http" in sys.argv:
         # HTTP mode for Smithery hosted deployment
         # Users connect with credentials in URL query params
         import uvicorn
-        app = mcp.get_asgi_app()
+        app = mcp.http_app()
         port = int(os.getenv("PORT", 8000))
         print(f"Starting HTTP server on port {port}")
         uvicorn.run(app, host="0.0.0.0", port=port)

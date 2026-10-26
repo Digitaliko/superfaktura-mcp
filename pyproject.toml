@@ -3,7 +3,7 @@ name = "superfaktura-mcp"
 version = "0.1.0"
 description = "Model Context Protocol server for SuperFaktura invoicing system - enables AI assistants to manage invoices, clients, and expenses"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 authors = [
     {name = "Filip Papranec", email = "filip@digitaliko.com"}
@@ -13,6 +13,8 @@ dependencies = [
     "fastmcp>=2.6.0",
     "requests>=2.31.0",
     "python-dotenv>=1.0.0",
+    "uvicorn>=0.27.0",
+    "jsonpath-ng>=1.6.0",
 ]
 
 [project.urls]

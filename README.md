@@ -12,6 +12,7 @@ Model Context Protocol (MCP) server for SuperFaktura invoicing system. Enables A
 - **Client Management** - Full CRUD operations with 30+ fields
 - **Expense Management** - Complete expense tracking with file attachments
 - **Advanced Filtering** - 25+ filter options for invoices, comprehensive search across all resources
+- **Field Filtering** - Extract specific fields as tabular data (array of arrays) for easy processing
 - **Multi-tenant Support** - Deploy as public MCP server or run locally
 
 ---
