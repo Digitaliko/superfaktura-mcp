@@ -1533,7 +1533,7 @@ if __name__ == "__main__":
     import sys
 
     # Support both HTTP (for Smithery hosted) and stdio (for local)
-    if "--http" in sys.argv:
+    if "--http" in sys.argv or os.getenv("PORT"):
         # HTTP mode for Smithery hosted deployment
         # Users connect with credentials in URL query params
         import uvicorn
