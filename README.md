@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/digitaliko-superfaktura-mcp-badge.png)](https://mseep.ai/app/digitaliko-superfaktura-mcp)
+
 # SuperFaktura MCP Server
 
 Model Context Protocol (MCP) server for SuperFaktura invoicing system. Enables AI assistants to interact with SuperFaktura API for managing invoices, clients, and expenses.
