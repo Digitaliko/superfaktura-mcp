@@ -16,7 +16,7 @@ internal milestones before the package was versioned.
 
 ### Fixed (aligned with https://github.com/superfaktura/docs)
 - `send_invoice` sent `{"Invoice": ...}`; the API expects `{"Email": {"invoice_id", "to"}}`.
-  Without `email` it now uses the client's email on the invoice
+  `email` is now required (never guessed)
 - `get_invoice_pdf` called `invoices/pdf/{id}` without the required token and parsed the PDF
   as JSON; it now reads the token, downloads the PDF and saves it to a file
 - `set_invoice_language`: `GET invoices/setinvoicelanguage/{id}/lang:{lang}` (was a POST body)

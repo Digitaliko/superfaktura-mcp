@@ -218,3 +218,8 @@ def test_p5_country_any_case(monkeypatch):
         monkeypatch.setenv(k, v)
     monkeypatch.setenv("SUPERFAKTURA_COUNTRY", "CZ")
     assert server._get_client().base_url == "https://moje.superfaktura.cz"
+
+
+def test_c1_slash_number_with_search_is_refused(http):
+    r = run("list_invoices", invoice_no_formatted="2026/001", search="ACME")
+    assert r["status"] == "failed" and http["calls"] == []

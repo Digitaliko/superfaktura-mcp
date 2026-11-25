@@ -669,7 +669,9 @@ context: Context = None,
     if invoice_no_formatted and "/" in invoice_no_formatted:
         # SuperFaktura does not match an encoded slash in this path filter (sandbox, 25. 11. 2026);
         # its full-text search finds the number, so use that instead
-        search = search or invoice_no_formatted
+        if search:
+            return {"error": "Use either search or an invoice_no_formatted containing '/', not both.", "status": "failed"}
+        search = invoice_no_formatted
     elif invoice_no_formatted:
         params.append(_seg("invoice_no_formatted", invoice_no_formatted))
     if order_no:
