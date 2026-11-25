@@ -96,7 +96,12 @@ Add a new client: ACME Corp, email: billing@acme.com, IČO: 12345678
 Record an expense: Office supplies €150 from yesterday
 ```
 
-Recurring invoices (the SuperFaktura "pravidelné faktúry" feature) are not in the public SuperFaktura API, so the server cannot list, edit or create them.
+**Repeat last month's invoice:**
+```
+Issue this month's invoice for ACME Corp with the same items as their last invoice
+```
+
+Recurring invoices (the SuperFaktura "pravidelné faktúry" feature) are not in the public SuperFaktura API, so the server cannot list, edit or create them; the prompt above is the workaround.
 
 ---
 
@@ -148,7 +153,7 @@ uv run --with pytest pytest -q
 
 End to end against a SuperFaktura **sandbox** account (skipped without these vars; refuses any non-sandbox URL):
 ```bash
-SUPERFAKTURA_SANDBOX_EMAIL=... SUPERFAKTURA_SANDBOX_API_KEY=... uv run --with pytest pytest tests/test_sandbox.py -v
+SANDBOX_SUPERFAKTURA_EMAIL=... SANDBOX_SUPERFAKTURA_API_KEY=... uv run --with pytest pytest tests/test_sandbox.py -v
 ```
 
 Test with MCP Inspector:

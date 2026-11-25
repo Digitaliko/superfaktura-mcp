@@ -1,14 +1,15 @@
 """Every tool end to end against a SuperFaktura SANDBOX account.
 
-Runs only when SUPERFAKTURA_SANDBOX_EMAIL and SUPERFAKTURA_SANDBOX_API_KEY are set;
+Runs only when SANDBOX_SUPERFAKTURA_EMAIL and SANDBOX_SUPERFAKTURA_API_KEY are set;
 skipped otherwise. It refuses any base URL that is not sandbox.superfaktura.*, so a
 production key can never be used by mistake. Creates a test client, invoices and an
 expense, and deletes them at the end.
 
-    SUPERFAKTURA_SANDBOX_EMAIL=... SUPERFAKTURA_SANDBOX_API_KEY=... \\
-    [SUPERFAKTURA_SANDBOX_COMPANY_ID=...] SUPERFAKTURA_SANDBOX_COUNTRY=sandbox-sk uv run --with pytest pytest tests/test_sandbox.py -v
+    SANDBOX_SUPERFAKTURA_EMAIL=... SANDBOX_SUPERFAKTURA_API_KEY=... \\
+    [SANDBOX_SUPERFAKTURA_COMPANY_ID=...] [SANDBOX_SUPERFAKTURA_URL=https://sandbox.superfaktura.cz] \\
+    uv run --with pytest pytest tests/test_sandbox.py -v
 
-send_invoice sends a real email, so it runs only with SUPERFAKTURA_SANDBOX_SEND_TO set.
+send_invoice sends a real email, so it runs only with SANDBOX_SUPERFAKTURA_SEND_TO set.
 """
 
 import os
@@ -18,11 +19,11 @@ import pytest
 
 import server
 
-EMAIL = os.getenv("SUPERFAKTURA_SANDBOX_EMAIL")
-KEY = os.getenv("SUPERFAKTURA_SANDBOX_API_KEY")
-COUNTRY = os.getenv("SUPERFAKTURA_SANDBOX_COUNTRY", "sandbox-sk")
-COMPANY_ID = os.getenv("SUPERFAKTURA_SANDBOX_COMPANY_ID")
-SEND_TO = os.getenv("SUPERFAKTURA_SANDBOX_SEND_TO")
+EMAIL = os.getenv("SANDBOX_SUPERFAKTURA_EMAIL")
+KEY = os.getenv("SANDBOX_SUPERFAKTURA_API_KEY")
+URL = os.getenv("SANDBOX_SUPERFAKTURA_URL", "https://sandbox.superfaktura.sk").rstrip("/")
+COMPANY_ID = os.getenv("SANDBOX_SUPERFAKTURA_COMPANY_ID")
+SEND_TO = os.getenv("SANDBOX_SUPERFAKTURA_SEND_TO")
 
 pytestmark = pytest.mark.skipif(not (EMAIL and KEY), reason="no SuperFaktura sandbox credentials")
 
@@ -32,12 +33,11 @@ STAMP = time.strftime("%Y%m%d-%H%M%S")
 
 @pytest.fixture(autouse=True, scope="module")
 def sandbox_env():
-    assert COUNTRY.startswith("sandbox-"), "SUPERFAKTURA_SANDBOX_COUNTRY must be sandbox-sk or sandbox-cz"
+    assert URL.startswith("https://sandbox.superfaktura."), "SANDBOX_SUPERFAKTURA_URL must be a sandbox URL"
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv("SUPERFAKTURA_EMAIL", EMAIL)
         mp.setenv("SUPERFAKTURA_API_KEY", KEY)
-        mp.setenv("SUPERFAKTURA_COUNTRY", COUNTRY)
-        mp.delenv("SUPERFAKTURA_API_URL", raising=False)
+        mp.setenv("SUPERFAKTURA_API_URL", URL)
         if COMPANY_ID:
             mp.setenv("SUPERFAKTURA_COMPANY_ID", COMPANY_ID)
         else:
@@ -118,7 +118,7 @@ def test_mark_invoice_paid():
     ok(run("mark_invoice_paid", invoice_id=STATE["invoice_id"], amount=61.5))
 
 
-@pytest.mark.skipif(not SEND_TO, reason="SUPERFAKTURA_SANDBOX_SEND_TO not set (sends a real email)")
+@pytest.mark.skipif(not SEND_TO, reason="SANDBOX_SUPERFAKTURA_SEND_TO not set (sends a real email)")
 def test_send_invoice():
     ok(run("send_invoice", invoice_id=STATE["invoice_id"], email=SEND_TO))
 

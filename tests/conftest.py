@@ -3,7 +3,7 @@
 Real SuperFaktura credentials must never reach a test. The developer shell may
 export SUPERFAKTURA_EMAIL / SUPERFAKTURA_API_KEY for a production account, so
 they are removed here before server.py is imported. Only the sandbox suite
-(tests/test_sandbox.py) talks to an API, and only with SUPERFAKTURA_SANDBOX_*.
+(tests/test_sandbox.py) talks to an API, and only with SANDBOX_SUPERFAKTURA_*.
 """
 
 import os
