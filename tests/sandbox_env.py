@@ -5,6 +5,7 @@ SANDBOX_LOG=<file> appends one JSON line per tool call (tool, args, short result
 import json
 import os
 import time
+from urllib.parse import urlparse
 
 import pytest
 
@@ -16,6 +17,13 @@ URL = os.getenv("SANDBOX_SUPERFAKTURA_URL", "https://sandbox.superfaktura.sk").r
 COMPANY_ID = os.getenv("SANDBOX_SUPERFAKTURA_COMPANY_ID")
 SEND_TO = os.getenv("SANDBOX_SUPERFAKTURA_SEND_TO")
 LOG = os.getenv("SANDBOX_LOG")
+
+SANDBOX_HOSTS = {"sandbox.superfaktura.sk", "sandbox.superfaktura.cz"}
+
+
+def is_sandbox_url(url):
+    raise NotImplementedError
+
 
 skip_without_sandbox = pytest.mark.skipif(not (EMAIL and KEY), reason="no SuperFaktura sandbox credentials")
 STAMP = time.strftime("%Y%m%d-%H%M%S")
