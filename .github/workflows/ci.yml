@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv run --python ${{ matrix.python }} pytest -q
+      - name: The built wheel, run by uvx, serves all tools over stdio
+        run: |
+          uv build --wheel
+          WHEEL=$(ls dist/superfaktura_mcp-*.whl)
+          SMOKE_COMMAND="uvx --python ${{ matrix.python }} --from $PWD/$WHEEL superfaktura-mcp" \
+            uv run --python ${{ matrix.python }} pytest -q tests/test_stdio_smoke.py

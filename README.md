@@ -1,8 +1,16 @@
 # SuperFaktura MCP Server
 
+[![PyPI](https://img.shields.io/pypi/v/superfaktura-mcp)](https://pypi.org/project/superfaktura-mcp/)
+[![License](https://img.shields.io/github/license/Digitaliko/superfaktura-mcp)](LICENSE)
+[![Glama score](https://glama.ai/mcp/servers/Digitaliko/superfaktura-mcp/badges/score.svg)](https://glama.ai/mcp/servers/Digitaliko/superfaktura-mcp)
+
 Model Context Protocol (MCP) server for SuperFaktura invoicing system. Enables AI assistants to interact with SuperFaktura API for managing invoices, clients, and expenses.
 
 **Author:** [@filippofilip95](https://github.com/filippofilip95), [Digitaliko](https://www.digitaliko.com)
+
+<a href="https://glama.ai/mcp/servers/Digitaliko/superfaktura-mcp"><img width="380" height="200" src="https://glama.ai/mcp/servers/Digitaliko/superfaktura-mcp/badge" alt="SuperFaktura MCP server on Glama" /></a>
+
+<!-- mcp-name: io.github.Digitaliko/superfaktura-mcp -->
 
 ---
 
@@ -13,7 +21,8 @@ Model Context Protocol (MCP) server for SuperFaktura invoicing system. Enables A
 - **Expense Management** - Complete expense tracking with file attachments
 - **Advanced Filtering** - 25+ filter options for invoices, comprehensive search across all resources
 - **Field Filtering** - Extract specific fields as tabular data (array of arrays) for easy processing
-- **Multi-tenant Support** - Deploy as public MCP server or run locally
+- **Safe by default** - Tools carry MCP read-only/destructive hints; `SUPERFAKTURA_READ_ONLY=1` exposes only the read tools; deleting and emailing ask the agent to confirm with you first
+- **Runs locally** - stdio server on your computer, one SuperFaktura account per server (no hosted/HTTP mode in 0.1.0)
 
 ---
 
@@ -21,10 +30,12 @@ Model Context Protocol (MCP) server for SuperFaktura invoicing system. Enables A
 
 ### 1. Install
 
+You need [uv](https://docs.astral.sh/uv/) (macOS: `brew install uv`, others: `curl -LsSf https://astral.sh/uv/install.sh | sh`). Then `uvx superfaktura-mcp` downloads and runs the server; step 3 does this for you. From source:
+
 ```bash
-git clone https://github.com/digitaliko/superfaktura-mcp.git
+git clone https://github.com/Digitaliko/superfaktura-mcp.git
 cd superfaktura-mcp
-pip install -r requirements.txt
+uv run server.py        # or: pip install -r requirements.txt && python server.py
 ```
 
 ### 2. Get API Credentials
@@ -42,8 +53,8 @@ pip install -r requirements.txt
 {
   "mcpServers": {
     "superfaktura": {
-      "command": "python3",
-      "args": ["/absolute/path/to/superfaktura-mcp/server.py"],
+      "command": "uvx",
+      "args": ["superfaktura-mcp"],
       "env": {
         "SUPERFAKTURA_EMAIL": "your-email@example.com",
         "SUPERFAKTURA_API_KEY": "your-api-key-here",
@@ -54,7 +65,15 @@ pip install -r requirements.txt
 }
 ```
 
-Restart Claude Desktop after configuration.
+Claude Desktop does not read your shell's PATH: if it cannot start the server, replace `"uvx"` with the full path that `which uvx` prints (for example `/opt/homebrew/bin/uvx`).
+
+Restart Claude Desktop after configuration. From a source checkout use `"command": "python3", "args": ["/absolute/path/to/superfaktura-mcp/server.py"]` instead.
+
+Claude Code: `claude mcp add superfaktura -e SUPERFAKTURA_EMAIL=you@example.com -e SUPERFAKTURA_API_KEY=your-key -- uvx superfaktura-mcp`
+
+Optional: `"SUPERFAKTURA_COMPANY_ID"` for accounts with several companies, `"SUPERFAKTURA_READ_ONLY": "1"` to let the assistant only read.
+
+Try it first against the SuperFaktura sandbox (`SUPERFAKTURA_COUNTRY=sandbox-sk`, account at [sandbox.superfaktura.sk](https://sandbox.superfaktura.sk)), not your live account.
 
 ---
 
@@ -82,6 +101,13 @@ Add a new client: ACME Corp, email: billing@acme.com, IČO: 12345678
 Record an expense: Office supplies €150 from yesterday
 ```
 
+**Repeat last month's invoice:**
+```
+Issue this month's invoice for ACME Corp with the same items as their last invoice
+```
+
+Recurring invoices (the SuperFaktura "pravidelné faktúry" feature) are not in the public SuperFaktura API, so the server cannot list, edit or create them; the prompt above is the workaround.
+
 ---
 
 ## Documentation
@@ -102,6 +128,9 @@ Record an expense: Office supplies €150 from yesterday
 ### Expenses (5 tools)
 `create_expense`, `list_expenses`, `get_expense`, `edit_expense`, `delete_expense`
 
+### Lookups (2 tools)
+`list_expense_categories`, `list_tags`
+
 See [API Reference](docs/API.md) for detailed documentation.
 
 ---
@@ -116,13 +145,25 @@ See [API Reference](docs/API.md) for detailed documentation.
 | Sandbox (SK) | `sandbox-sk` | sandbox.superfaktura.sk |
 | Sandbox (CZ) | `sandbox-cz` | sandbox.superfaktura.cz |
 
+Tested end to end on sandbox.superfaktura.sk. CZ and AT use the URLs from the SuperFaktura docs and are not tested yet.
+
 ---
 
 ## Development
 
 Run server:
 ```bash
-python server.py
+uv run server.py
+```
+
+Tests (mocked HTTP and a stdio smoke test, no account needed):
+```bash
+uv run --with pytest pytest -q
+```
+
+End to end against a SuperFaktura **sandbox** account: every tool (`tests/test_sandbox.py`) and 30 user scenarios with validation cases (`tests/test_sandbox_scenarios.py`). Skipped without these vars, refuses any non-sandbox URL, deletes its test data:
+```bash
+SANDBOX_SUPERFAKTURA_EMAIL=... SANDBOX_SUPERFAKTURA_API_KEY=... uv run pytest tests/test_sandbox.py tests/test_sandbox_scenarios.py -v
 ```
 
 Test with MCP Inspector:

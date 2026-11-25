@@ -11,3 +11,5 @@ ENV/
 .DS_Store
 claude_desktop_config.json
 *.egg-info
+dist/
+.venv/

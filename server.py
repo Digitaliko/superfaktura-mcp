@@ -1,90 +1,59 @@
 #!/usr/bin/env python3
 
+import base64
 import os
-import requests
-from typing import Optional, Dict, Any, List
+import time
 from datetime import datetime
-from fastmcp import FastMCP, Context
-from dotenv import load_dotenv
+from typing import Optional, Dict, Any, List
+from urllib.parse import quote
 
-load_dotenv()
+import requests
+from fastmcp import FastMCP, Context
+from mcp.types import ToolAnnotations
 
 mcp = FastMCP(name="superfaktura")
 
+# Tools that change data in SuperFaktura. SUPERFAKTURA_READ_ONLY=1 leaves them out.
+WRITE_TOOLS = {
+    "create_invoice", "edit_invoice", "delete_invoice", "send_invoice", "mark_invoice_paid",
+    "set_invoice_language", "create_client", "update_client", "delete_client",
+    "create_expense", "edit_expense", "delete_expense",
+}
+DESTRUCTIVE_TOOLS = {"delete_invoice", "delete_client", "delete_expense", "send_invoice"}
 
-def get_credentials_from_context(context: Context = None) -> tuple:
-    """
-    Extract SuperFaktura credentials from MCP request context.
 
-    Supports multiple credential sources:
-    1. HTTP query parameters (Smithery hosted deployment)
-    2. Custom headers (FastMCP Cloud deployment)
-    3. Environment variables (local/single-tenant)
+def _ann(name: str) -> ToolAnnotations:
+    """MCP hints so clients can ask before a write and warn before a destructive call."""
+    if name not in WRITE_TOOLS:
+        return ToolAnnotations(readOnlyHint=True, openWorldHint=True)
+    return ToolAnnotations(readOnlyHint=False, destructiveHint=name in DESTRUCTIVE_TOOLS, openWorldHint=True)
 
-    For Smithery HTTP deployment, users configure when connecting:
-    https://server.com/mcp?email=user@example.com&apiKey=xyz&country=sk
 
-    For FastMCP Cloud with headers:
-    {
-      "mcpServers": {
-        "superfaktura": {
-          "url": "https://superfaktura.fastmcp.app/mcp",
-          "headers": {
-            "X-SuperFaktura-Email": "user@example.com",
-            "X-SuperFaktura-API-Key": "user-key",
-            "X-SuperFaktura-Country": "sk"
-          }
-        }
-      }
-    }
+# Language list, docs value-lists.md (ISO 639-2)
+LANGUAGES = {"cze", "deu", "eng", "hrv", "hun", "ita", "nld", "pol", "rom", "rus", "slo", "slv", "spa", "ukr"}
 
-    Returns:
-        tuple: (email, apikey, company_id, country)
-    """
-    if not context:
-        # Fallback to environment variables
-        return (
-            os.getenv("SUPERFAKTURA_EMAIL"),
-            os.getenv("SUPERFAKTURA_API_KEY"),
-            os.getenv("SUPERFAKTURA_COMPANY_ID"),
-            os.getenv("SUPERFAKTURA_COUNTRY", "sk"),
-        )
 
-    # Try to get credentials from request query params (for Smithery HTTP deployment)
-    request_params = getattr(context, "request_params", {}) or {}
+def _language(code: Optional[str]) -> Optional[str]:
+    """Normalized language code, or None when it is not one SuperFaktura knows."""
+    code = (code or "").strip().lower()
+    return code if code in LANGUAGES else None
 
-    # Try to get credentials from request headers (for FastMCP Cloud)
-    headers = getattr(context, "headers", {}) or {}
 
-    # Priority: query params > headers > env vars
-    email = (
-        request_params.get("email") or
-        headers.get("x-superfaktura-email") or
-        os.getenv("SUPERFAKTURA_EMAIL")
-    )
-    apikey = (
-        request_params.get("apiKey") or
-        headers.get("x-superfaktura-api-key") or
-        os.getenv("SUPERFAKTURA_API_KEY")
-    )
-    company_id = (
-        request_params.get("companyId") or
-        headers.get("x-superfaktura-company-id") or
-        os.getenv("SUPERFAKTURA_COMPANY_ID")
-    )
-    country = (
-        request_params.get("country") or
-        headers.get("x-superfaktura-country") or
-        os.getenv("SUPERFAKTURA_COUNTRY", "sk")
-    )
+def _bad_language(code: str) -> Dict[str, Any]:
+    return {"error": f"Unknown language {code!r}. Use one of: {', '.join(sorted(LANGUAGES))}.", "status": "failed"}
 
-    # Also check for apiUrl override
-    api_url = (
-        request_params.get("apiUrl") or
-        os.getenv("SUPERFAKTURA_API_URL")
-    )
 
-    return email, apikey, company_id, country
+def _seg(key: str, value: Any) -> str:
+    """One `key:value` URL segment. The value is percent-encoded, so text from the model can
+    never add a path segment, a query or a fragment ('|' and ',' stay: multi-value and base64)."""
+    return f"{key}:{quote(str(value), safe='|,')}"
+
+
+def _sf_b64(text: str) -> str:
+    """Base64 the way the SuperFaktura docs want it in URLs (intro.md): + -> -, / -> _, = -> ,"""
+    raw = base64.b64encode(text.encode("utf-8")).decode("ascii")
+    return raw.replace("+", "-").replace("/", "_").replace("=", ",")
+
 
 BASE_URLS = {
     "sk": "https://moja.superfaktura.sk",
@@ -100,7 +69,7 @@ class SuperFakturaClient:
     Client for interacting with SuperFaktura API.
 
     Supports both environment variables (for single-tenant/local development)
-    and per-request credentials (for multi-tenant deployments).
+    or explicit arguments.
     """
 
     def __init__(
@@ -108,9 +77,9 @@ class SuperFakturaClient:
         email: Optional[str] = None,
         api_key: Optional[str] = None,
         api_url: Optional[str] = None,
-        country: str = "sk",
+        country: Optional[str] = None,
         company_id: Optional[str] = None,
-        module: str = "superfaktura-mcp/2.0",
+        module: str = "superfaktura-mcp/0.1.0",
     ):
         """
         Initialize SuperFaktura API client.
@@ -121,7 +90,7 @@ class SuperFakturaClient:
             api_url: Custom API URL (falls back to SUPERFAKTURA_API_URL env var)
             country: Country code - sk, cz, at, sandbox-sk, sandbox-cz (default: sk)
             company_id: Company ID (optional, falls back to SUPERFAKTURA_COMPANY_ID env var)
-            module: Module identifier for API (default: superfaktura-mcp/2.0)
+            module: Module identifier for API (default: superfaktura-mcp/0.1.0)
 
         Raises:
             ValueError: If credentials are not provided via parameters or environment variables
@@ -141,7 +110,7 @@ class SuperFakturaClient:
         # Support custom API URL or use country-based URL
         self.base_url = api_url or os.getenv("SUPERFAKTURA_API_URL")
         if not self.base_url:
-            resolved_country = country or os.getenv("SUPERFAKTURA_COUNTRY", "sk")
+            resolved_country = (country or os.getenv("SUPERFAKTURA_COUNTRY") or "sk").strip().lower()
             self.base_url = BASE_URLS.get(resolved_country)
             if not self.base_url:
                 raise ValueError(f"Invalid country code: {resolved_country}")
@@ -164,21 +133,51 @@ class SuperFakturaClient:
             "Content-Type": "application/json",
         }
 
+    RETRIES_429 = 2  # ponytail: short fixed backoff; a daily/monthly limit will not clear by waiting
+
+    def _send(self, method: str, endpoint: str, data: Optional[Dict] = None, timeout: int = 30):
+        """One request with a short backoff on HTTP 429. Returns (response, None) or (None, error dict)."""
+        url = f"{self.base_url}/{endpoint}"
+        for attempt in range(self.RETRIES_429 + 1):
+            try:
+                response = requests.request(
+                    method=method, url=url, json=data, headers=self._get_headers(), timeout=timeout
+                )
+            except requests.exceptions.RequestException as e:
+                return None, {"error": str(e), "status": "failed"}
+            if response.status_code == 429 and attempt < self.RETRIES_429:
+                time.sleep(2 ** attempt)
+                continue
+            if response.status_code >= 400:
+                err: Dict[str, Any] = {
+                    "error": f"SuperFaktura returned HTTP {response.status_code}",
+                    "status": "failed",
+                    "http_status": response.status_code,
+                    "body": (getattr(response, "text", "") or "")[:500],
+                }
+                message = (getattr(response, "headers", None) or {}).get("X-RateLimit-Message")
+                if message:
+                    err["rate_limit_message"] = message
+                return None, err
+            return response, None
+        return None, {"error": "unreachable", "status": "failed"}
+
     def _request(
         self, method: str, endpoint: str, data: Optional[Dict] = None
     ) -> Dict[str, Any]:
         """Make authenticated request to SuperFaktura API."""
-        url = f"{self.base_url}/{endpoint}"
-        headers = self._get_headers()
-
+        response, err = self._send(method, endpoint, data)
+        if err:
+            return err
         try:
-            response = requests.request(
-                method=method, url=url, json=data, headers=headers, timeout=30
-            )
-            response.raise_for_status()
             return response.json()
-        except requests.exceptions.RequestException as e:
-            return {"error": str(e), "status": "failed"}
+        except ValueError as e:
+            return {"error": f"SuperFaktura did not return JSON: {e}", "status": "failed"}
+
+    def get_bytes(self, endpoint: str):
+        """GET a binary file (PDF). Returns (bytes, None) or (None, error dict)."""
+        response, err = self._send("GET", endpoint, timeout=60)
+        return (None, err) if err else (response.content, None)
 
     def get(self, endpoint: str) -> Dict[str, Any]:
         """GET request."""
@@ -195,6 +194,22 @@ class SuperFakturaClient:
     def delete(self, endpoint: str) -> Dict[str, Any]:
         """DELETE request."""
         return self._request("DELETE", endpoint)
+
+
+def _view_invoice(sf: SuperFakturaClient, invoice_id: int):
+    """GET invoices/view. Returns (Invoice dict, None) or (None, error dict).
+
+    Success is explicit, per invoice.md "Get invoice detail": the body carries an "Invoice"
+    object with an id and has no `error` key. "Wrong invoice" is {"error": 1, "error_message": ...}.
+    A missing `error` key alone never counts as success."""
+    body = sf.get(f"invoices/view/{invoice_id}.json")
+    if not isinstance(body, dict) or body.get("status") == "failed":
+        return None, body if isinstance(body, dict) else {"error": "Unexpected response.", "status": "failed"}
+    invoice = body.get("Invoice")
+    if body.get("error") in (None, 0, "0") and isinstance(invoice, dict) and invoice.get("id"):
+        return invoice, None
+    message = body.get("error_message") or body.get("message") or "no Invoice in the response"
+    return None, {"error": f"Invoice {invoice_id} not found: {message}", "status": "failed", "response": body}
 
 
 def _get_nested_value(data: Any, path: str) -> Any:
@@ -311,55 +326,24 @@ def _apply_fields_filter(data: Dict[str, Any], fields_filter: Optional[List[str]
         return [row]
 
 
-# Global client for single-tenant deployments using environment variables
-# For multi-tenant: create client instances with SuperFakturaClient(email, api_key)
-try:
-    client = SuperFakturaClient()
-except ValueError:
-    # No env vars set - multi-tenant mode, credentials must be provided per-request
-    client = None  # type: ignore
-
-
 def _get_client(context: Context = None) -> SuperFakturaClient:
-    """
-    Get SuperFaktura client with credentials from context or environment.
-
-    For Smithery HTTP: credentials come from URL query parameters
-    For FastMCP Cloud: credentials come from custom headers
-    For local stdio: credentials from environment variables
-
-    Args:
-        context: FastMCP context containing request params/headers
-
-    Returns:
-        Configured SuperFakturaClient instance
-
-    Raises:
-        ValueError: If no credentials available (provides helpful message)
-    """
-    email, apikey, company_id, country = get_credentials_from_context(context)
-
-    if not email or not apikey:
+    """SuperFaktura client from the environment (stdio: one account per server process)."""
+    email = os.getenv("SUPERFAKTURA_EMAIL")
+    api_key = os.getenv("SUPERFAKTURA_API_KEY")
+    if not email or not api_key:
         raise ValueError(
-            "SuperFaktura credentials required. Please provide:\n\n"
-            "For Smithery HTTP deployment:\n"
-            "  Connect with URL: https://server.smithery.ai/@Digitaliko/superfaktura-mcp/mcp?email=YOUR_EMAIL&apiKey=YOUR_KEY&country=sk\n\n"
-            "For FastMCP Cloud:\n"
-            "  Add headers: X-SuperFaktura-Email, X-SuperFaktura-API-Key\n\n"
-            "For local stdio:\n"
-            "  Set env vars: SUPERFAKTURA_EMAIL, SUPERFAKTURA_API_KEY\n\n"
-            "Get credentials from: Tools → API in your SuperFaktura account"
+            "SuperFaktura credentials required: set SUPERFAKTURA_EMAIL and SUPERFAKTURA_API_KEY "
+            "(SuperFaktura > Tools > API) in the MCP server's env."
         )
-
     return SuperFakturaClient(
         email=email,
-        api_key=apikey,
-        company_id=company_id,
-        country=country,
+        api_key=api_key,
+        company_id=os.getenv("SUPERFAKTURA_COMPANY_ID"),
+        country=os.getenv("SUPERFAKTURA_COUNTRY"),
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=_ann("create_invoice"))
 def create_invoice(
     client_id: int,
     name: str,
@@ -415,7 +399,8 @@ context: Context = None,
     Args:
         client_id: ID of the client to invoice
         name: Invoice name/description
-        invoice_items: List of items, each with keys: name, description, unit_price, quantity, tax (and optional AccountingDetail)
+        invoice_items: List of items, each with keys: name, description, unit_price (price per unit WITHOUT VAT),
+                      quantity, tax (VAT percent, e.g. 23 or 0), and optional unit, discount, AccountingDetail
         issued_date: Issue date (YYYY-MM-DD), defaults to today
         due_date: Due date (YYYY-MM-DD), defaults to issued_date
         variable_symbol: Variable symbol for payment identification
@@ -560,7 +545,7 @@ context: Context = None,
     return _get_client(context).post("invoices/create", invoice_data)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_ann("list_invoices"))
 def list_invoices(
     page: int = 1,
     per_page: int = 50,
@@ -601,7 +586,7 @@ context: Context = None,
         direction: Sorting direction (ASC or DESC)
         sort: Attribute to sort by (e.g., 'regular_count', 'created', 'amount')
         type: Document type filter (proforma, regular, etc.). Use | for multiple (e.g., 'regular|proforma')
-        status: Filter by status (1=draft, 2=sent, 3=paid, 99=cancelled). Use | for multiple
+        status: Filter by status (1=issued, 2=partially paid, 3=paid, 99=overdue). Use | for multiple
         client_id: Filter by client ID
         created_since: Creation date from (YYYY-MM-DD, requires created:3)
         created_to: Creation date to (YYYY-MM-DD, requires created:3)
@@ -618,7 +603,7 @@ context: Context = None,
         invoice_no_formatted: Search by formatted invoice number
         order_no: Search by order number
         variable: Search by variable symbol
-        search: Base64 encoded search string
+        search: Plain-text search term (the tool encodes it for the API)
         tag: Filter by tag ID
         ignore: Invoice IDs to exclude. Use | for multiple (e.g., '1|2|3')
         fields_filter: List of field paths to extract as array of arrays (rows)
@@ -640,9 +625,9 @@ context: Context = None,
         per_page = 200
 
     params = [
-        f"page:{page}",
-        f"per_page:{per_page}",
-        f"listinfo:{listinfo}",
+        _seg("page", page),
+        _seg("per_page", per_page),
+        _seg("listinfo", listinfo),
     ]
 
     # Time-based filters - add BEFORE sort to avoid URL parsing conflicts
@@ -650,72 +635,78 @@ context: Context = None,
     if created_since or created_to:
         params.append("created:3")
         if created_since:
-            params.append(f"created_since:{created_since}")
+            params.append(_seg("created_since", created_since))
         if created_to:
-            params.append(f"created_to:{created_to}")
+            params.append(_seg("created_to", created_to))
 
     if modified_since or modified_to:
         params.append("modified:3")
         if modified_since:
-            params.append(f"modified_since:{modified_since}")
+            params.append(_seg("modified_since", modified_since))
         if modified_to:
-            params.append(f"modified_to:{modified_to}")
+            params.append(_seg("modified_to", modified_to))
 
     if delivery_since or delivery_to:
         params.append("delivery:3")
         if delivery_since:
-            params.append(f"delivery_since:{delivery_since}")
+            params.append(_seg("delivery_since", delivery_since))
         if delivery_to:
-            params.append(f"delivery_to:{delivery_to}")
+            params.append(_seg("delivery_to", delivery_to))
 
     if paydate_since or paydate_to:
         params.append("paydate:3")
         if paydate_since:
-            params.append(f"paydate_since:{paydate_since}")
+            params.append(_seg("paydate_since", paydate_since))
         if paydate_to:
-            params.append(f"paydate_to:{paydate_to}")
+            params.append(_seg("paydate_to", paydate_to))
 
     # Add sort after date filters to avoid conflicts
-    params.append(f"direction:{direction}")
-    params.append(f"sort:{sort}")
+    params.append(_seg("direction", direction))
+    params.append(_seg("sort", sort))
 
     if type:
-        params.append(f"type:{type}")
+        params.append(_seg("type", type))
     if status:
-        params.append(f"status:{status}")
+        params.append(_seg("status", status))
     if client_id:
-        params.append(f"client_id:{client_id}")
+        params.append(_seg("client_id", client_id))
 
     # Amount filters
     if amount_from is not None:
-        params.append(f"amount_from:{amount_from}")
+        params.append(_seg("amount_from", amount_from))
     if amount_to is not None:
-        params.append(f"amount_to:{amount_to}")
+        params.append(_seg("amount_to", amount_to))
 
     # Other filters
     if payment_type:
-        params.append(f"payment_type:{payment_type}")
+        params.append(_seg("payment_type", payment_type))
     if delivery_type:
-        params.append(f"delivery_type:{delivery_type}")
-    if invoice_no_formatted:
-        params.append(f"invoice_no_formatted:{invoice_no_formatted}")
+        params.append(_seg("delivery_type", delivery_type))
+    if invoice_no_formatted and "/" in invoice_no_formatted:
+        # SuperFaktura does not match an encoded slash in this path filter (sandbox, 25. 11. 2026);
+        # its full-text search finds the number, so use that instead
+        if search:
+            return {"error": "Use either search or an invoice_no_formatted containing '/', not both.", "status": "failed"}
+        search = invoice_no_formatted
+    elif invoice_no_formatted:
+        params.append(_seg("invoice_no_formatted", invoice_no_formatted))
     if order_no:
-        params.append(f"order_no:{order_no}")
+        params.append(_seg("order_no", order_no))
     if variable:
-        params.append(f"variable:{variable}")
+        params.append(_seg("variable", variable))
     if search:
-        params.append(f"search:{search}")
+        params.append(_seg("search", _sf_b64(search)))
     if tag:
-        params.append(f"tag:{tag}")
+        params.append(_seg("tag", tag))
     if ignore:
-        params.append(f"ignore:{ignore}")
+        params.append(_seg("ignore", ignore))
 
     endpoint = f"invoices/index.json/{'/'.join(params)}"
     response = _get_client(context).get(endpoint)
     return _apply_fields_filter(response, fields_filter)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_ann("get_invoice"))
 def get_invoice(
     invoice_id: int,
     fields_filter: Optional[List[str]] = None,
@@ -744,59 +735,72 @@ def get_invoice(
     return _apply_fields_filter(response, fields_filter)
 
 
-@mcp.tool()
-def send_invoice(invoice_id: int, email: Optional[str] = None,
+@mcp.tool(annotations=_ann("send_invoice"))
+def send_invoice(invoice_id: int, email: str,
+pdf_language: Optional[str] = None,
 context: Context = None,
 ) -> Dict[str, Any]:
-    """
-    Send an invoice via email.
+    """Sends a real email to the customer. Confirm with the user first.
+
+    Emails the invoice PDF to `email` (required, never guessed; SuperFaktura limit: 100 emails per hour).
 
     Args:
         invoice_id: ID of the invoice to send
-        email: Optional override email address (uses client email by default)
+        email: Recipient address, as confirmed by the user
+        pdf_language: Optional PDF language (eng, slo, cze, deu, ...)
 
     Returns:
         Response indicating if email was sent successfully
     """
-    data = {"Invoice": {"id": invoice_id}}
-    if email:
-        data["Invoice"]["email"] = email
+    if not email or "@" not in email:
+        return {"error": "A recipient email is required.", "status": "failed"}
+    data: Dict[str, Any] = {"Email": {"invoice_id": invoice_id, "to": email}}
+    if pdf_language:
+        lang = _language(pdf_language)
+        if not lang:
+            return _bad_language(pdf_language)
+        data["Email"]["pdf_language"] = lang
 
     return _get_client(context).post("invoices/send", data)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_ann("mark_invoice_paid"))
 def mark_invoice_paid(
     invoice_id: int, amount: float, payment_date: Optional[str] = None,
+    payment_type: str = "transfer", currency: Optional[str] = None,
     context: Context = None,
 ) -> Dict[str, Any]:
     """
-    Mark an invoice as paid by recording a payment.
+    Record a payment on an invoice (partial or full).
 
     Args:
         invoice_id: ID of the invoice
-        amount: Payment amount
-        payment_date: Payment date (YYYY-MM-DD), defaults to today
+        amount: Amount paid
+        payment_date: Date of the payment (YYYY-MM-DD), defaults to today
+        payment_type: transfer (default), cash, card, cod, paypal, other, ... (docs: Value lists > Payment types)
+        currency: Currency of the payment; defaults to the invoice's currency
 
     Returns:
         Payment recording response
     """
+    sf = _get_client(context)
     if not payment_date:
         payment_date = datetime.now().strftime("%Y-%m-%d")
+    if not currency:
+        invoice, err = _view_invoice(sf, invoice_id)
+        if err:
+            return err
+        currency = invoice.get("invoice_currency")
 
-    payment_data = {
-        "InvoicePayment": {
-            "invoice_id": invoice_id,
-            "amount": amount,
-            "payment_type": "transfer",
-            "created": payment_date,
-        }
-    }
-
-    return _get_client(context).post("invoice_payments/add", payment_data)
+    # docs name the field `date`; the API response and stored payment use `created`, so send both
+    payment = {"invoice_id": invoice_id, "amount": amount, "payment_type": payment_type,
+               "date": payment_date, "created": payment_date}
+    if currency:
+        payment["currency"] = currency
+    return sf.post("invoice_payments/add/ajax:1/api:1", {"InvoicePayment": payment})
 
 
-@mcp.tool()
+@mcp.tool(annotations=_ann("create_client"))
 def create_client(
     name: str,
     email: Optional[str] = None,
@@ -876,6 +880,9 @@ context: Context = None,
     Returns:
         Client creation response with client ID
     """
+    if not name or not name.strip():
+        # SuperFaktura answers an empty name with {"error": 1, "error_message": []}
+        return {"error": "Client name is required.", "status": "failed"}
     client_data: Dict[str, Any] = {"Client": {"name": name}}
 
     client_obj = client_data["Client"]
@@ -946,7 +953,7 @@ context: Context = None,
     return _get_client(context).post("clients/create", client_data)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_ann("list_clients"))
 def list_clients(
     page: int = 1,
     per_page: int = 50,
@@ -974,7 +981,7 @@ context: Context = None,
         direction: Sorting direction (ASC or DESC)
         sort: Attribute to sort by
         char_filter: Filter by first letter of client name (use # for non-letters)
-        search: Base64 encoded search string (searches name, ICO, DIC, IC_DPH, bank_account, email, address, city, zip, state, country, phone, fax, comment, tags, UUID)
+        search: Plain-text search (the tool encodes it); searches name, ICO, DIC, IC_DPH, bank_account, email, address, city, zip, state, country, phone, fax, comment, tags, UUID)
         search_uuid: Search by exact UUID
         tag: Filter by tag ID
         created_since: Creation date from (YYYY-MM-DD, requires created:3)
@@ -996,9 +1003,9 @@ context: Context = None,
         List of clients with pagination info and metadata (if fields_filter is None), or array of arrays if fields_filter is specified
     """
     params = [
-        f"page:{page}",
-        f"per_page:{per_page}",
-        f"listinfo:{listinfo}",
+        _seg("page", page),
+        _seg("per_page", per_page),
+        _seg("listinfo", listinfo),
     ]
 
     # Time-based filters - add BEFORE sort to avoid URL parsing conflicts
@@ -1006,36 +1013,36 @@ context: Context = None,
     if created_since or created_to:
         params.append("created:3")
         if created_since:
-            params.append(f"created_since:{created_since}")
+            params.append(_seg("created_since", created_since))
         if created_to:
-            params.append(f"created_to:{created_to}")
+            params.append(_seg("created_to", created_to))
 
     if modified_since or modified_to:
         params.append("modified:3")
         if modified_since:
-            params.append(f"modified_since:{modified_since}")
+            params.append(_seg("modified_since", modified_since))
         if modified_to:
-            params.append(f"modified_to:{modified_to}")
+            params.append(_seg("modified_to", modified_to))
 
     # Add sort after date filters to avoid conflicts
-    params.append(f"direction:{direction}")
-    params.append(f"sort:{sort}")
+    params.append(_seg("direction", direction))
+    params.append(_seg("sort", sort))
 
     if char_filter:
-        params.append(f"char_filter:{char_filter}")
+        params.append(_seg("char_filter", char_filter))
     if search:
-        params.append(f"search:{search}")
+        params.append(_seg("search", _sf_b64(search)))
     if search_uuid:
-        params.append(f"search_uuid:{search_uuid}")
+        params.append(_seg("search_uuid", search_uuid))
     if tag:
-        params.append(f"tag:{tag}")
+        params.append(_seg("tag", tag))
 
     endpoint = f"clients/index.json/{'/'.join(params)}"
     response = _get_client(context).get(endpoint)
     return _apply_fields_filter(response, fields_filter)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_ann("get_client"))
 def get_client(
     client_id: int,
     fields_filter: Optional[List[str]] = None,
@@ -1063,7 +1070,7 @@ def get_client(
     return _apply_fields_filter(response, fields_filter)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_ann("update_client"))
 def update_client(client_id: int, updates: Dict[str, Any], context: Context = None,
 ) -> Dict[str, Any]:
     """
@@ -1080,7 +1087,7 @@ def update_client(client_id: int, updates: Dict[str, Any], context: Context = No
     return _get_client(context).patch(f"clients/edit/{client_id}", client_data)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_ann("create_expense"))
 def create_expense(
     name: str,
     amount: Optional[float] = None,
@@ -1219,7 +1226,7 @@ def create_expense(
     return _get_client(context).post("expenses/add", expense_data)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_ann("list_expenses"))
 def list_expenses(
     page: int = 1,
     per_page: int = 50,
@@ -1265,7 +1272,7 @@ context: Context = None,
         delivery_to: Delivery date to (YYYY-MM-DD, requires delivery:3)
         due: Due date (YYYY-MM-DD)
         payment_type: Payment type filter (see SuperFaktura docs for valid values)
-        search: Base64 encoded search string
+        search: Plain-text search term (the tool encodes it for the API)
         status: Expense status filter. Use | for multiple (e.g., '1|2')
         type: Expense type filter
         fields_filter: List of field paths to extract as array of arrays (rows)
@@ -1287,9 +1294,9 @@ context: Context = None,
         per_page = 100
 
     params = [
-        f"page:{page}",
-        f"per_page:{per_page}",
-        f"listinfo:{listinfo}",
+        _seg("page", page),
+        _seg("per_page", per_page),
+        _seg("listinfo", listinfo),
     ]
 
     # Time-based filters - add BEFORE sort to avoid URL parsing conflicts
@@ -1297,54 +1304,54 @@ context: Context = None,
     if created_since or created_to:
         params.append("created:3")
         if created_since:
-            params.append(f"created_since:{created_since}")
+            params.append(_seg("created_since", created_since))
         if created_to:
-            params.append(f"created_to:{created_to}")
+            params.append(_seg("created_to", created_to))
 
     if modified_since or modified_to:
         params.append("modified:3")
         if modified_since:
-            params.append(f"modified_since:{modified_since}")
+            params.append(_seg("modified_since", modified_since))
         if modified_to:
-            params.append(f"modified_to:{modified_to}")
+            params.append(_seg("modified_to", modified_to))
 
     if delivery_since or delivery_to:
         params.append("delivery:3")
         if delivery_since:
-            params.append(f"delivery_since:{delivery_since}")
+            params.append(_seg("delivery_since", delivery_since))
         if delivery_to:
-            params.append(f"delivery_to:{delivery_to}")
+            params.append(_seg("delivery_to", delivery_to))
 
     # Add sort after date filters to avoid conflicts
-    params.append(f"direction:{direction}")
-    params.append(f"sort:{sort}")
+    params.append(_seg("direction", direction))
+    params.append(_seg("sort", sort))
 
     if amount_from is not None:
-        params.append(f"amount_from:{amount_from}")
+        params.append(_seg("amount_from", amount_from))
     if amount_to is not None:
-        params.append(f"amount_to:{amount_to}")
+        params.append(_seg("amount_to", amount_to))
     if category:
-        params.append(f"category:{category}")
+        params.append(_seg("category", category))
     if client_id:
-        params.append(f"client_id:{client_id}")
+        params.append(_seg("client_id", client_id))
 
     if due:
-        params.append(f"due:{due}")
+        params.append(_seg("due", due))
     if payment_type:
-        params.append(f"payment_type:{payment_type}")
+        params.append(_seg("payment_type", payment_type))
     if search:
-        params.append(f"search:{search}")
+        params.append(_seg("search", _sf_b64(search)))
     if status:
-        params.append(f"status:{status}")
+        params.append(_seg("status", status))
     if type:
-        params.append(f"type:{type}")
+        params.append(_seg("type", type))
 
     endpoint = f"expenses/index.json/{'/'.join(params)}"
     response = _get_client(context).get(endpoint)
     return _apply_fields_filter(response, fields_filter)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_ann("get_expense"))
 def get_expense(
     expense_id: int,
     fields_filter: Optional[List[str]] = None,
@@ -1378,7 +1385,7 @@ def get_expense(
 # ============================================================================
 
 
-@mcp.tool()
+@mcp.tool(annotations=_ann("edit_invoice"))
 def edit_invoice(invoice_id: int, updates: Dict[str, Any], context: Context = None,
 ) -> Dict[str, Any]:
     """
@@ -1406,33 +1413,64 @@ def edit_invoice(invoice_id: int, updates: Dict[str, Any], context: Context = No
     return _get_client(context).post("invoices/edit", invoice_data)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_ann("get_invoice_pdf"))
 def get_invoice_pdf(invoice_id: int, language: Optional[str] = None,
 context: Context = None,
 ) -> Dict[str, Any]:
     """
-    Get invoice PDF download URL and metadata.
+    Download the invoice PDF to a private file on the computer running this server.
 
     Args:
         invoice_id: ID of the invoice
-        language: Optional language code (eng, slo, cze, deu, etc.)
+        language: Optional language code (slo, cze, eng, deu, ...); default is the invoice's language
 
     Returns:
-        Response with PDF URL and metadata
+        {"path": local file path, "bytes": size, "note": where the file is}, or an error
     """
-    endpoint = f"invoices/pdf/{invoice_id}"
+    import tempfile
+
+    lang = None
     if language:
-        endpoint += f"/lang:{language}"
+        lang = _language(language)
+        if not lang:
+            return _bad_language(language)
+    sf = _get_client(context)
+    invoice, err = _view_invoice(sf, invoice_id)
+    if err:
+        return err
+    token = invoice.get("token")
+    if not token:
+        return {"error": f"Invoice {invoice_id} has no PDF token in the response.", "status": "failed", "response": invoice}
 
-    return _get_client(context).get(endpoint)
+    # URL per the docs: /[{LANGUAGE}/]invoices/pdf/{INVOICE_ID}/token:{TOKEN}
+    endpoint = f"invoices/pdf/{invoice_id}/" + _seg("token", token)
+    if lang:
+        endpoint = f"{lang}/{endpoint}"
+    pdf, err = sf.get_bytes(endpoint)
+    if err:
+        return err
+    if not pdf.startswith(b"%PDF"):
+        return {"error": "SuperFaktura did not return a PDF.", "status": "failed"}
+
+    # ponytail: a private temp file suits stdio (the server runs on the user's computer);
+    # a hosted server would return an embedded resource instead.
+    try:
+        fd, path = tempfile.mkstemp(prefix=f"superfaktura-invoice-{invoice_id}-{lang or 'default'}-", suffix=".pdf")
+        with os.fdopen(fd, "wb") as f:
+            f.write(pdf)
+    except OSError as e:
+        return {"error": f"Could not save the PDF: {e}", "status": "failed"}
+    return {"path": path, "bytes": len(pdf), "note": "Saved on this computer, readable only by your user."}
 
 
-@mcp.tool()
+@mcp.tool(annotations=_ann("delete_invoice"))
 def delete_invoice(invoice_id: int,
 context: Context = None,
 ) -> Dict[str, Any]:
-    """
-    Delete an invoice.
+    """PERMANENT: deletes the invoice in SuperFaktura. Confirm with the user first.
+
+    An invoice that was already issued to a customer should normally be corrected with a
+    credit note (dobropis: create_invoice with type="cancel" and parent_id) instead.
 
     Args:
         invoice_id: ID of the invoice to delete
@@ -1440,10 +1478,10 @@ context: Context = None,
     Returns:
         Deletion response
     """
-    return _get_client(context).delete(f"invoices/delete/{invoice_id}")
+    return _get_client(context).get(f"invoices/delete/{invoice_id}")
 
 
-@mcp.tool()
+@mcp.tool(annotations=_ann("set_invoice_language"))
 def set_invoice_language(invoice_id: int, language: str,
 context: Context = None,
 ) -> Dict[str, Any]:
@@ -1452,13 +1490,37 @@ context: Context = None,
 
     Args:
         invoice_id: ID of the invoice
-        language: Language code (eng, slo, cze, deu, hun, pol, rom, rus, ukr, hrv)
+        language: cze, deu, eng, hrv, hun, ita, nld, pol, rom, rus, slo, slv, spa, ukr
 
     Returns:
         Update response
     """
-    data = {"InvoiceSetting": {"language": language}}
-    return _get_client(context).post(f"invoices/setinvoicelanguage/{invoice_id}", data)
+    lang = _language(language)
+    if not lang:
+        return _bad_language(language)
+    return _get_client(context).get(f"invoices/setinvoicelanguage/{invoice_id}/" + _seg("lang", lang))
+
+
+@mcp.tool(annotations=_ann("list_expense_categories"))
+def list_expense_categories(context: Context = None) -> Any:
+    """
+    List expense categories (ids for create_expense's expense_category_id).
+
+    Returns:
+        List of expense categories
+    """
+    return _get_client(context).get("expenses/expense_categories")
+
+
+@mcp.tool(annotations=_ann("list_tags"))
+def list_tags(context: Context = None) -> Any:
+    """
+    List tags (ids for the tag filter of list_invoices, list_clients and list_expenses).
+
+    Returns:
+        List of tags
+    """
+    return _get_client(context).get("tags/index.json")
 
 
 # ============================================================================
@@ -1466,12 +1528,11 @@ context: Context = None,
 # ============================================================================
 
 
-@mcp.tool()
+@mcp.tool(annotations=_ann("delete_client"))
 def delete_client(client_id: int,
 context: Context = None,
 ) -> Dict[str, Any]:
-    """
-    Delete a client.
+    """PERMANENT: deletes the client (contact) in SuperFaktura. Confirm with the user first.
 
     Args:
         client_id: ID of the client to delete
@@ -1487,7 +1548,7 @@ context: Context = None,
 # ============================================================================
 
 
-@mcp.tool()
+@mcp.tool(annotations=_ann("edit_expense"))
 def edit_expense(expense_id: int, updates: Dict[str, Any], context: Context = None,
 ) -> Dict[str, Any]:
     """
@@ -1513,12 +1574,11 @@ def edit_expense(expense_id: int, updates: Dict[str, Any], context: Context = No
     return _get_client(context).post("expenses/edit", expense_data)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_ann("delete_expense"))
 def delete_expense(expense_id: int,
 context: Context = None,
 ) -> Dict[str, Any]:
-    """
-    Delete an expense.
+    """PERMANENT: deletes the expense in SuperFaktura. Confirm with the user first.
 
     Args:
         expense_id: ID of the expense to delete
@@ -1526,22 +1586,31 @@ context: Context = None,
     Returns:
         Deletion response
     """
-    return _get_client(context).delete(f"expenses/delete/{expense_id}")
+    return _get_client(context).get(f"expenses/delete/{expense_id}")
+
+
+def _apply_read_only() -> None:
+    """SUPERFAKTURA_READ_ONLY=1 leaves the write tools out. Decided when the server starts
+    (after .env is loaded), never at import, so importing server.py always gives every tool."""
+    if os.getenv("SUPERFAKTURA_READ_ONLY", "").strip().lower() in ("1", "true", "yes"):
+        for name in WRITE_TOOLS:
+            mcp.remove_tool(name)
+
+
+def main():
+    import sys
+
+    from dotenv import load_dotenv
+
+    if "--http" in sys.argv:
+        # 0.1.0 has no HTTP mode: an HTTP server would act with the owner's account for anyone
+        # who can reach it. Per-user credentials over HTTP need auth first (see the issues).
+        print("superfaktura-mcp runs over stdio only; --http is not supported in 0.1.0.", file=sys.stderr)
+        sys.exit(2)
+    load_dotenv()  # a .env next to the server, for local runs only (never at import)
+    _apply_read_only()
+    mcp.run(transport="stdio")
 
 
 if __name__ == "__main__":
-    import sys
-
-    # Support both HTTP (for Smithery hosted) and stdio (for local)
-    if "--http" in sys.argv or os.getenv("PORT"):
-        # HTTP mode for Smithery hosted deployment
-        # Users connect with credentials in URL query params
-        import uvicorn
-        app = mcp.http_app()
-        port = int(os.getenv("PORT", 8000))
-        print(f"Starting HTTP server on port {port}")
-        uvicorn.run(app, host="0.0.0.0", port=port)
-    else:
-        # stdio mode for local Claude Desktop
-        # Users provide credentials via env vars
-        mcp.run(transport="stdio")
+    main()

@@ -1,60 +1,34 @@
 # Deployment Guide
 
-This guide covers different deployment options for the SuperFaktura MCP server.
+superfaktura-mcp 0.1.0 is a local **stdio** MCP server. It runs on your computer and uses one SuperFaktura account per server process, taken from environment variables.
+
+There is no hosted or HTTP mode in 0.1.0. An HTTP server would act with the owner's account for anyone who can reach it, so `--http` is refused. Hosted use with per-user credentials needs authentication first; it is tracked in the issues.
 
 ---
 
-## Deployment Options
+## Install and run
 
-The server supports two authentication patterns:
+You need [uv](https://docs.astral.sh/uv/) (macOS: `brew install uv`).
 
-1. **Local/Single-Tenant** - Uses environment variables
-2. **Public MCP Server** - Uses custom headers from client configuration
+```bash
+uvx superfaktura-mcp                      # from PyPI
+# or from source
+git clone https://github.com/Digitaliko/superfaktura-mcp.git
+cd superfaktura-mcp && uv run server.py
+```
 
-Both patterns can work simultaneously with automatic fallback.
+The server reads a `.env` file next to it when started directly (`cp .env.example .env`). MCP clients normally pass the variables in their config instead.
 
 ---
 
-## Option 1: Local Development (Environment Variables)
-
-Best for personal use and local development.
-
-### Setup
-
-1. Clone repository:
-```bash
-git clone https://github.com/digitaliko/superfaktura-mcp.git
-cd superfaktura-mcp
-```
-
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-3. Create `.env` file:
-```bash
-cp .env.example .env
-```
-
-4. Edit `.env` with your credentials:
-```env
-SUPERFAKTURA_EMAIL=your-email@example.com
-SUPERFAKTURA_API_KEY=your-api-key-here
-SUPERFAKTURA_COUNTRY=sk
-```
-
-### Claude Desktop Configuration
-
-**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+## Claude Desktop
 
 ```json
 {
   "mcpServers": {
     "superfaktura": {
-      "command": "python3",
-      "args": ["/absolute/path/to/superfaktura-mcp/server.py"],
+      "command": "/opt/homebrew/bin/uvx",
+      "args": ["superfaktura-mcp"],
       "env": {
         "SUPERFAKTURA_EMAIL": "your-email@example.com",
         "SUPERFAKTURA_API_KEY": "your-api-key-here",
@@ -65,81 +39,12 @@ SUPERFAKTURA_COUNTRY=sk
 }
 ```
 
-**For sandbox environment:**
-```json
-{
-  "mcpServers": {
-    "superfaktura": {
-      "command": "python3",
-      "args": ["/absolute/path/to/superfaktura-mcp/server.py"],
-      "env": {
-        "SUPERFAKTURA_EMAIL": "your-email@example.com",
-        "SUPERFAKTURA_API_KEY": "your-api-key-here",
-        "SUPERFAKTURA_API_URL": "https://sandbox.superfaktura.sk"
-      }
-    }
-  }
-}
-```
+Use the path that `which uvx` prints: Claude Desktop does not read your shell's PATH. Sandbox: `"SUPERFAKTURA_COUNTRY": "sandbox-sk"`.
 
-Restart Claude Desktop after configuration.
+## Claude Code
 
----
-
-## Option 2: Public MCP Server (FastMCP Cloud)
-
-Best for multi-tenant deployments where each user has their own credentials.
-
-### Server Deployment
-
-Deploy to FastMCP Cloud (or any other hosting platform):
-
-1. **No environment variables needed** - The server accepts credentials via request headers
-
-2. Deploy using your preferred method:
-   - FastMCP Cloud
-   - Vercel
-   - AWS Lambda
-   - Docker
-   - Any Python hosting platform
-
-### Client Configuration
-
-Users configure their credentials in Claude Desktop config using custom headers:
-
-**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "superfaktura": {
-      "url": "https://your-mcp-server-url.com/mcp",
-      "headers": {
-        "X-SuperFaktura-Email": "user@example.com",
-        "X-SuperFaktura-API-Key": "user-api-key",
-        "X-SuperFaktura-Country": "sk",
-        "X-SuperFaktura-Company-ID": "optional-company-id"
-      }
-    }
-  }
-}
-```
-
-**For sandbox:**
-```json
-{
-  "mcpServers": {
-    "superfaktura": {
-      "url": "https://your-mcp-server-url.com/mcp",
-      "headers": {
-        "X-SuperFaktura-Email": "user@example.com",
-        "X-SuperFaktura-API-Key": "user-api-key",
-        "X-SuperFaktura-Country": "sandbox-sk"
-      }
-    }
-  }
-}
+```bash
+claude mcp add superfaktura -e SUPERFAKTURA_EMAIL=you@example.com -e SUPERFAKTURA_API_KEY=your-key -- uvx superfaktura-mcp
 ```
 
 ---
@@ -151,9 +56,7 @@ Users configure their credentials in Claude Desktop config using custom headers:
 3. Copy your API key
 4. Use your login email as `SUPERFAKTURA_EMAIL`
 
-**Recommended:** Create a dedicated API user with Administrator role in **Settings** → **Users**
-
-For more details, refer to [SuperFaktura API documentation](https://github.com/superfaktura/docs/blob/master/intro.md#authentication).
+For more details, see the [SuperFaktura API documentation](https://github.com/superfaktura/docs/blob/master/intro.md#authentication).
 
 ---
 
@@ -167,112 +70,36 @@ For more details, refer to [SuperFaktura API documentation](https://github.com/s
 | `sandbox-sk` | Slovakia Sandbox | https://sandbox.superfaktura.sk |
 | `sandbox-cz` | Czech Sandbox | https://sandbox.superfaktura.cz |
 
-**Custom API URL:**
-For custom environments, set `SUPERFAKTURA_API_URL` (env var) or use custom country code mapping.
+Codes are case-insensitive. Tested end to end on sandbox.superfaktura.sk. CZ and AT use the documented URLs and are not tested yet.
+
+---
+
+## Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `SUPERFAKTURA_EMAIL` | Yes | - | Account email |
+| `SUPERFAKTURA_API_KEY` | Yes | - | API key from Tools → API |
+| `SUPERFAKTURA_COUNTRY` | No | `sk` | Country code (table above) |
+| `SUPERFAKTURA_COMPANY_ID` | No | - | Company ID, for accounts with several companies |
+| `SUPERFAKTURA_API_URL` | No | - | Custom API URL (overrides the country) |
+| `SUPERFAKTURA_READ_ONLY` | No | - | `1` exposes only the read tools (no create, edit, delete, send, pay) |
 
 ---
 
 ## Testing
 
-### Run server directly:
 ```bash
-python server.py
+uv run pytest -q                                        # mocked, no account needed
+npx @modelcontextprotocol/inspector uv run server.py     # MCP Inspector
 ```
 
-### Test with MCP Inspector:
-```bash
-npx @modelcontextprotocol/inspector python server.py
-```
-
----
-
-## Docker Deployment
-
-Create a `Dockerfile`:
-
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY server.py .
-COPY .env* ./
-
-EXPOSE 8000
-
-CMD ["python", "server.py"]
-```
-
-Build and run:
-```bash
-docker build -t superfaktura-mcp .
-docker run -p 8000:8000 superfaktura-mcp
-```
-
-With environment variables:
-```bash
-docker run -p 8000:8000 \
-  -e SUPERFAKTURA_EMAIL=your@email.com \
-  -e SUPERFAKTURA_API_KEY=your-key \
-  -e SUPERFAKTURA_COUNTRY=sk \
-  superfaktura-mcp
-```
-
----
-
-## Environment Variables Reference
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `SUPERFAKTURA_EMAIL` | Yes* | - | Account email |
-| `SUPERFAKTURA_API_KEY` | Yes* | - | API key from Tools → API |
-| `SUPERFAKTURA_COUNTRY` | No | `sk` | Country code |
-| `SUPERFAKTURA_COMPANY_ID` | No | - | Company ID (optional) |
-| `SUPERFAKTURA_API_URL` | No | - | Custom API URL (overrides country) |
-
-*Required unless using custom headers in public deployment
-
----
-
-## Custom Headers Reference
-
-For public MCP deployments, users can set these headers in Claude Desktop config:
-
-| Header | Required | Description |
-|--------|----------|-------------|
-| `X-SuperFaktura-Email` | Yes* | Account email |
-| `X-SuperFaktura-API-Key` | Yes* | API key |
-| `X-SuperFaktura-Country` | No | Country code (default: `sk`) |
-| `X-SuperFaktura-Company-ID` | No | Company ID (optional) |
-
-*Required unless using environment variables
-
-**Note:** Headers take precedence over environment variables.
+The sandbox suites (`tests/test_sandbox*.py`) run only with `SANDBOX_SUPERFAKTURA_EMAIL` and `SANDBOX_SUPERFAKTURA_API_KEY`, and only against https://sandbox.superfaktura.sk or .cz.
 
 ---
 
 ## Troubleshooting
 
-### Server won't start
-- Check Python version (3.8+ required)
-- Install dependencies: `pip install -r requirements.txt`
-- Verify credentials are set (env vars or headers)
-
-### Authentication errors
-- Verify email and API key in SuperFaktura **Tools** → **API**
-- Check country code matches your account
-- For sandbox, use `sandbox-sk` or `sandbox-cz`
-
-### Tools not appearing in Claude Desktop
-- Restart Claude Desktop after config changes
-- Check JSON syntax in config file
-- Verify absolute path to server.py
-- Check server logs for errors
-
-### Public MCP deployment issues
-- Ensure no environment variables are required in deployment
-- Verify custom headers are properly configured in Claude Desktop
-- Check that header names are lowercase in server code (`x-superfaktura-email`)
+- **Server won't start:** check that `uvx` (or `python3`) is on the path the client uses; in Claude Desktop use the full path.
+- **Authentication errors:** check the email and API key in **Tools** → **API**, and that the country code matches your account.
+- **Tools not appearing:** restart the client after changing its config; with `SUPERFAKTURA_READ_ONLY=1` only the 9 read tools appear.

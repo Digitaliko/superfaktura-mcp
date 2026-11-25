@@ -1,5 +1,56 @@
 # Changelog
 
+## [0.1.0] - 2026-11-25
+
+First tagged release and first PyPI package. The 1.0.0 and 2.0.0 entries below were
+internal milestones before the package was versioned.
+
+### Added
+- `uvx superfaktura-mcp`: console script, PyPI metadata, `server.json` for the official MCP Registry
+- Tests: every tool against mocked HTTP, a stdio smoke test that lists the tools, and an
+  end-to-end suite against a SuperFaktura sandbox account (`tests/test_sandbox.py`)
+- CI on Python 3.10 and 3.12
+- `send_invoice`: `pdf_language`
+- `list_expense_categories`, `list_tags`
+- `create_client` refuses an empty name with a readable error (SuperFaktura returns an empty error list)
+
+### Fixed (aligned with https://github.com/superfaktura/docs)
+- `send_invoice` sent `{"Invoice": ...}`; the API expects `{"Email": {"invoice_id", "to"}}`.
+  `email` is now required (never guessed)
+- `get_invoice_pdf` called `invoices/pdf/{id}` without the required token and parsed the PDF
+  as JSON; it now reads the token, downloads the PDF and saves it to a file
+- `set_invoice_language`: `GET invoices/setinvoicelanguage/{id}/lang:{lang}` (was a POST body)
+- `mark_invoice_paid`: `invoice_payments/add/ajax:1/api:1`
+- `delete_invoice`, `delete_expense`: GET, as documented (were DELETE)
+- `SuperFakturaClient()` without arguments ignored `SUPERFAKTURA_COUNTRY`
+- `mark_invoice_paid` and `get_invoice_pdf` accept an invoice only when the API returns an `Invoice`
+  object; a body without `error` but without an invoice is a failure, not success (before, a payment
+  could be posted for an invoice the API did not return)
+- Every tool's HTTP method and URL is checked by a test against the docs at a pinned commit
+  (`tests/test_docs.py`); `update_client` is PATCH and `delete_client` is DELETE, as clients.md documents
+- `list_invoices` status values per the docs (1 issued, 2 partially paid, 3 paid, 99 overdue)
+
+### Security and safety (pre-release review)
+- Text from the model can no longer shape request URLs: every `key:value` path segment is
+  percent-encoded and languages are checked against the 14 documented codes (before, a crafted
+  `language` could turn the PDF call into `GET /invoices/delete/...`)
+- MCP annotations on all 21 tools (read-only / destructive); `SUPERFAKTURA_READ_ONLY=1` leaves out
+  the 12 write tools (9 tools remain), decided when the server starts (a `.env` counts), never on import; delete tools say PERMANENT; `send_invoice` needs an explicit recipient
+- No HTTP mode: `--http` is refused, `PORT` no longer switches transport, and the dead per-request
+  credential path is gone (it was never reachable through fastmcp's Context)
+- `.env` is read only when the server is started, never on import
+- The PDF is saved with `mkstemp` (private file, invoice id and language in the name)
+
+### Changed
+- `search` takes plain text and encodes it as the docs require (base64 with `-_,`)
+- `list_invoices`: an invoice number containing `/` is looked up through search (the path filter never matches it)
+- `mark_invoice_paid`: `payment_type` and `currency` (defaults to the invoice's currency); sends the payment date
+- HTTP errors return the status, the first 500 characters of the body and `X-RateLimit-Message`; HTTP 429 is retried twice with a short backoff
+- `SUPERFAKTURA_COUNTRY` is case-insensitive; the missing-credentials error is one line
+
+### Removed
+- `jsonpath-ng` (unused) and `uvicorn` (HTTP mode removed)
+
 ## [2.0.0] - 2025-11-02
 
 ### Major Enhancements
