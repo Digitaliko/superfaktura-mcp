@@ -123,6 +123,9 @@ Recurring invoices (the SuperFaktura "pravidelné faktúry" feature) are not in 
 ### Expenses (5 tools)
 `create_expense`, `list_expenses`, `get_expense`, `edit_expense`, `delete_expense`
 
+### Lookups (2 tools)
+`list_expense_categories`, `list_tags`
+
 See [API Reference](docs/API.md) for detailed documentation.
 
 ---
@@ -151,9 +154,9 @@ Tests (mocked HTTP and a stdio smoke test, no account needed):
 uv run --with pytest pytest -q
 ```
 
-End to end against a SuperFaktura **sandbox** account (skipped without these vars; refuses any non-sandbox URL):
+End to end against a SuperFaktura **sandbox** account: every tool (`tests/test_sandbox.py`) and 30 user scenarios with validation cases (`tests/test_sandbox_scenarios.py`). Skipped without these vars, refuses any non-sandbox URL, deletes its test data:
 ```bash
-SANDBOX_SUPERFAKTURA_EMAIL=... SANDBOX_SUPERFAKTURA_API_KEY=... uv run --with pytest pytest tests/test_sandbox.py -v
+SANDBOX_SUPERFAKTURA_EMAIL=... SANDBOX_SUPERFAKTURA_API_KEY=... uv run pytest tests/test_sandbox.py tests/test_sandbox_scenarios.py -v
 ```
 
 Test with MCP Inspector:

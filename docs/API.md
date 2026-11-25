@@ -363,3 +363,15 @@ This MCP server implements comprehensive SuperFaktura API features:
 - [SuperFaktura Official PHP API Client](https://github.com/superfaktura/apiclient)
 - [SuperFaktura REST API Documentation](https://github.com/superfaktura/docs)
 - [Community OpenAPI Specification](https://github.com/xseman/superfaktura.openapi) by [@xseman](https://github.com/xseman)
+
+---
+
+## Lookups
+
+### list_expense_categories
+
+Expense categories with their ids (for `expense_category_id` in `create_expense`). No parameters.
+
+### list_tags
+
+Tags with their ids (for the `tag` filter of the list tools). No parameters.

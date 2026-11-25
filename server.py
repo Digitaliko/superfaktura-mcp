@@ -610,7 +610,7 @@ context: Context = None,
         direction: Sorting direction (ASC or DESC)
         sort: Attribute to sort by (e.g., 'regular_count', 'created', 'amount')
         type: Document type filter (proforma, regular, etc.). Use | for multiple (e.g., 'regular|proforma')
-        status: Filter by status (1=draft, 2=sent, 3=paid, 99=cancelled). Use | for multiple
+        status: Filter by status (1=issued, 2=partially paid, 3=paid, 99=overdue). Use | for multiple
         client_id: Filter by client ID
         created_since: Creation date from (YYYY-MM-DD, requires created:3)
         created_to: Creation date to (YYYY-MM-DD, requires created:3)
@@ -894,6 +894,9 @@ context: Context = None,
     Returns:
         Client creation response with client ID
     """
+    if not name or not name.strip():
+        # SuperFaktura answers an empty name with {"error": 1, "error_message": []}
+        return {"error": "Client name is required.", "status": "failed"}
     client_data: Dict[str, Any] = {"Client": {"name": name}}
 
     client_obj = client_data["Client"]
@@ -1501,6 +1504,28 @@ context: Context = None,
         Update response
     """
     return _get_client(context).get(f"invoices/setinvoicelanguage/{invoice_id}/lang:{language}")
+
+
+@mcp.tool()
+def list_expense_categories(context: Context = None) -> Any:
+    """
+    List expense categories (ids for create_expense's expense_category_id).
+
+    Returns:
+        List of expense categories
+    """
+    return _get_client(context).get("expenses/expense_categories")
+
+
+@mcp.tool()
+def list_tags(context: Context = None) -> Any:
+    """
+    List tags (ids for the tag filter of list_invoices, list_clients and list_expenses).
+
+    Returns:
+        List of tags
+    """
+    return _get_client(context).get("tags/index.json")
 
 
 # ============================================================================

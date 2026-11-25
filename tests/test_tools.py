@@ -71,6 +71,8 @@ CASES = [
     ("get_expense", {"expense_id": 5}, "GET", "expenses/view/5.json"),
     ("edit_expense", {"expense_id": 5, "updates": {"name": "y"}}, "POST", "expenses/edit"),
     ("delete_expense", {"expense_id": 5}, "GET", "expenses/delete/5"),
+    ("list_expense_categories", {}, "GET", "expenses/expense_categories"),
+    ("list_tags", {}, "GET", "tags/index.json"),
 ]
 
 
@@ -144,3 +146,57 @@ def test_fields_filter_rows():
     assert server._apply_fields_filter(data, ["items.Invoice.id", "items.Invoice.name"]) == [[1, "A"], [2, "B"]]
     assert server._apply_fields_filter(data, []) == []
     assert server._apply_fields_filter(data, None) is data
+
+
+@pytest.mark.parametrize("exc", [server.requests.exceptions.Timeout("timed out"),
+                                 server.requests.exceptions.ConnectionError("no route")])
+def test_network_errors_become_a_failed_result(monkeypatch, exc):
+    for k, v in FAKE.items():
+        monkeypatch.setenv(k, v)
+
+    def boom(**kwargs):
+        raise exc
+    monkeypatch.setattr(server.requests, "request", boom)
+    r = run("get_invoice", invoice_id=1)
+    assert r["status"] == "failed" and str(exc) in r["error"]
+
+
+def test_http_429_becomes_a_failed_result(monkeypatch):
+    for k, v in FAKE.items():
+        monkeypatch.setenv(k, v)
+
+    class TooMany(FakeResponse):
+        def raise_for_status(self):
+            raise server.requests.exceptions.HTTPError("429 Too Many Requests")
+    monkeypatch.setattr(server.requests, "request", lambda **kw: TooMany())
+    r = run("list_invoices")
+    assert r["status"] == "failed" and "429" in r["error"]
+
+
+def test_missing_credentials_is_a_clear_error(monkeypatch):
+    with pytest.raises(ValueError, match="SuperFaktura credentials required"):
+        run("list_clients")
+
+
+@pytest.mark.parametrize("country,url", [
+    ("sk", "https://moja.superfaktura.sk"), ("cz", "https://moje.superfaktura.cz"),
+    ("at", "https://meine.superfaktura.at"), ("sandbox-sk", "https://sandbox.superfaktura.sk"),
+    ("sandbox-cz", "https://sandbox.superfaktura.cz"),
+])
+def test_country_switches_base_url(monkeypatch, country, url):
+    for k, v in FAKE.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("SUPERFAKTURA_COUNTRY", country)
+    assert server._get_client().base_url == url
+
+
+def test_api_url_overrides_country(monkeypatch):
+    for k, v in FAKE.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("SUPERFAKTURA_API_URL", "https://sandbox.superfaktura.cz")
+    assert server._get_client().base_url == "https://sandbox.superfaktura.cz"
+
+
+def test_create_client_without_name_is_refused_locally(calls):
+    assert run("create_client", name="  ") == {"error": "Client name is required.", "status": "failed"}
+    assert calls == []

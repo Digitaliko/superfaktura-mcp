@@ -25,5 +25,5 @@ def test_stdio_lists_all_tools(tmp_path):
             return sorted(t.name for t in await client.list_tools())
 
     names = asyncio.run(list_names())
-    assert len(names) == 19
+    assert len(names) == 21
     assert {"create_invoice", "list_clients", "create_expense"} <= set(names)

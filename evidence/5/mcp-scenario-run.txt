@@ -1,0 +1,66 @@
+CALL create_client {"name": "MCP scenár (test data) Alfa s.r.o.", "ico": "51234567", "address": "Hlavná 5", "city": "Žilina", "zip_code": "01001", "email": "alfa@example.com"}
+  -> {"error":0,"error_message":"Client created","data":{"Client":{"id":"104121","user_id":"1457","user_profile_id":"2209","uuid":null,"country_id":"191","name":"MCP scenár (test data) Alfa s.r.o.","ico":"
+TEXT Search by IČO (base64 of "51234567").
+CALL list_clients {"search": "NTEyMzQ1Njc=", "fields_filter": ["items.Client.id", "items.Client.name", "items.Client.ico", "items.Client.email"]}
+  -> [{"type": "text", "text": "[[\"104121\",\"MCP scenár (test data) Alfa s.r.o.\",\"51234567\",\"alfa@example.com\"]]"}]
+CALL update_client {"client_id": 104121, "updates": {"email": "fakturacia@example.com"}}
+  -> {"error":0,"message":"The client has been saved"}
+CALL create_invoice {"client_id": 104121, "name": "MCP scenár (test data) faktúra", "invoice_items": [{"name": "MCP scenár (test data) Vývoj", "unit": "h", "unit_price": 60, "quantity": 3, "tax": 23}, {"name": "MCP scenár (test data) Licencia", "unit_price": 200, "quantity": 1, "tax": 23}], "discount": 5, "type": "regu
+  -> {"error":0,"error_message":"Invoice created","data":{"0":{"to_pay":"444.030000","to_pay_in_invoice_currency":"444.03","total":"444.03"},"Invoice":{"id":"381232","user_id":"1457","user_profile_id":"220
+CALL mark_invoice_paid {"invoice_id": 381232, "amount": 100}
+  -> {"payment_id":"163803","error":0,"invoice_id":381232,"status":2,"paid":100,"to_pay":344.03,"to_pay_home_cur":344.03,"currency":"€","home_currency":"€","exchange_rate":1,"country_exchange_rate":1,"invo
+CALL create_invoice {"client_id": 104121, "name": "MCP scenár (test data) zálohová faktúra", "invoice_items": [{"name": "MCP scenár (test data) Záloha", "unit_price": 500, "quantity": 1, "tax": 0}], "type": "proforma"}
+  -> {"error":0,"error_message":"Invoice created","data":{"0":{"to_pay":"500.000000","to_pay_in_invoice_currency":"500.00","total":"500.00"},"Invoice":{"id":"381233","user_id":"1457","user_profile_id":"220
+CALL list_invoices {"client_id": 104121, "type": "regular", "fields_filter": ["items.Invoice.id", "items.Invoice.invoice_no_formatted", "items.Invoice.created", "items.Invoice.amount"]}
+  -> [{"type": "text", "text": "[[\"381232\",\"2026020\",\"2026-11-25 00:00:00\",\"361.00\"]]"}]
+CALL create_invoice {"client_id": 104121, "name": "MCP scenár (test data) faktúra", "invoice_items": [{"name": "MCP scenár (test data) Vývoj", "unit": "h", "unit_price": 60, "quantity": 3, "tax": 23}, {"name": "MCP scenár (test data) Licencia", "unit_price": 200, "quantity": 1, "tax": 23}], "discount": 5, "type": "regu
+  -> {"error":0,"error_message":"Invoice created","data":{"0":{"to_pay":"444.030000","to_pay_in_invoice_currency":"444.03","total":"444.03"},"Invoice":{"id":"381234","user_id":"1457","user_profile_id":"220
+CALL get_invoice_pdf {"invoice_id": 381234, "language": "eng"}
+CALL list_expense_categories {}
+CALL create_invoice {"client_id": 104121, "name": "MCP scenár (test data) mena XXX", "invoice_items": [{"name": "MCP scenár (test data) Test meny", "unit_price": 10, "quantity": 1, "tax": 23}], "invoice_currency": "XXX"}
+  -> {"path":"/var/folders/w1/z6885xwj4lb0bp296b7pt4980000gn/T/superfaktura-invoice-381234.pdf","bytes":250608}
+  -> [{"type": "text", "text": "[{\"id\":1,\"icon\":\"building\",\"icon_color\":\"#3a4345\",\"name\":\"Kancelária\",\"children\":[{\"id\":2,\"icon\":\"bolt\",\"icon_color\":\"#1c212b\",\"name\":\"Nájomné /
+  -> {"error":1,"error_message":"Incorrect currency"}
+TEXT Krok 8 skončil chybou „Incorrect currency“. Zapisujem náklad v kategórii Kancelária. Pri sume 80 EUR beriem, že je s DPH, takže základ je 65,04 EUR.
+CALL create_expense {"name": "MCP scenár (test data) kancelária", "amount": 65.04, "vat": 23, "currency": "EUR", "expense_category_id": 1, "version": "basic"}
+  -> {"data":{"Expense":{"id":"5196","user_id":"1457","user_profile_id":"2209","client_id":null,"expense_category_id":"1","sequence_id":"19051","number":"2026001","type":"invoice","name":"MCP scenár (test 
+TEXT Teraz mažem všetko, čo som vytvoril. Zmazať treba 3 faktúry (riadne 381232 a 381234, zálohovú 381233), náklad 5196 a klienta 104121.
+CALL delete_invoice {"invoice_id": 381232}
+CALL delete_invoice {"invoice_id": 381233}
+CALL delete_invoice {"invoice_id": 381234}
+CALL delete_expense {"expense_id": 5196}
+  -> {"error":0,"message":"Invoice deleted"}
+  -> {"error":0,"message":"Invoice deleted"}
+  -> {"error":0,"message":"Invoice deleted"}
+  -> {"status":"success","message":"Expense deleted"}
+CALL delete_client {"client_id": 104121}
+  -> {"redirect_url":"/clients","error":0,"message":"Kontakt bol zmazaný"}
+TEXT Všetkých 9 krokov som prešiel a všetko, čo som vytvoril, je zmazané. Nič som neposielal emailom.
+
+1. **Klient:** Založil som ho (ID 104121), našiel podľa IČO 51234567 a zmenil mu email na fakturacia@example.com.
+2. **Faktúra 2026020:** Položky sú 3 h × 60 € a 1 × 200 € s DPH 23 % a zľavou 5 %.
+   - Základ: **361,00 €**. Z 380 € je to po zľave 5 %.
+   - DPH: **83,03 €**
+   - Na úhradu: **444,03 €**
+3. **Úhrada:** Po zaznačení 100 € dlhuje **344,03 €**. Faktúra je čiastočne uhradená.
+4. **Zálohová faktúra ZAL12026003:** 500 € bez DPH, na úhradu 500,00 €.
+5. **Kópia poslednej riadnej faktúry:** Vznikla faktúra 2026021 s rovnakými položkami, zľavou 5 % aj sumou 444,03 €. Klient mal predtým jedinú riadnu faktúru, tú z kroku 2.
+6. **PDF v angličtine:** Je pre faktúru 2026021 v `/var/folders/w1/z6885xwj4lb0bp296b7pt4980000gn/T/superfaktura-invoice-381234.pdf` (250 608 B). Súbor je v tempe a po zmazaní faktúry zostal na disku.
+7. **Náklad:** Zapísal som ho ako 65,04 € základ + 23 % DPH, čo je spolu 80,00 €. Kategória je Kancelária.
+   - **Kancelária:** Nájomné/energie, Kancelárske potreby, Internet, Telefón, Hardware, Software.
+   - **Služby:** Účtovníctvo, Právne služby, Bankové poplatky a poistné, Reklama a marketing, Pošta, Prevádzka.
+   - **Vozidlo:** Palivo, Servis, Poistenie, Odpisy.
+   - **Zamestnanci:** Mzdy, Odvody, Ostatné.
+8. **Mena XXX:** Faktúra sa nevystavila, API vrátilo chybu „Incorrect currency“. Nič nevzniklo, takže nebolo čo mazať.
+9. **Zmazané:**
+   - faktúra 2026020 (ID 381232)
+   - zálohová faktúra ZAL12026003 (ID 381233)
+   - faktúra 2026021 (ID 381234)
+   - náklad „MCP scenár (test data) kancelária“ (ID 5196)
+   - klient „MCP scenár (test data) Alfa s.r.o.“ (ID 104121)
+
+## Predpoklady
+- Sumu nákladu 80 € som vzal ako s DPH, lebo nástroj berie základ bez DPH. Ak ste mysleli 80 € bez DPH, náklad treba zapísať znova.
+- „Posledná riadna faktúra“ je faktúra 2026020. Duplikát v kroku 5 má rovnaké položky aj zľavu, len nový dátum a číslo.
+- „Faktúra poslednej“ v kroku 6 je kópia z kroku 5 (2026021).
+FINAL success turns 19

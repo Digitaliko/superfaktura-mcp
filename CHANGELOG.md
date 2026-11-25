@@ -11,6 +11,8 @@ internal milestones before the package was versioned.
   end-to-end suite against a SuperFaktura sandbox account (`tests/test_sandbox.py`)
 - CI on Python 3.10 and 3.12
 - `send_invoice`: `pdf_language`
+- `list_expense_categories`, `list_tags`
+- `create_client` refuses an empty name with a readable error (SuperFaktura returns an empty error list)
 
 ### Fixed (aligned with https://github.com/superfaktura/docs)
 - `send_invoice` sent `{"Invoice": ...}`; the API expects `{"Email": {"invoice_id", "to"}}`.
@@ -21,6 +23,7 @@ internal milestones before the package was versioned.
 - `mark_invoice_paid`: `invoice_payments/add/ajax:1/api:1`
 - `delete_invoice`, `delete_expense`: GET, as documented (were DELETE)
 - `SuperFakturaClient()` without arguments ignored `SUPERFAKTURA_COUNTRY`
+- `list_invoices` status values per the docs (1 issued, 2 partially paid, 3 paid, 99 overdue)
 
 ### Removed
 - `jsonpath-ng` dependency (unused)

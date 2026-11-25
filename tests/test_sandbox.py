@@ -12,50 +12,13 @@ expense, and deletes them at the end.
 send_invoice sends a real email, so it runs only with SANDBOX_SUPERFAKTURA_SEND_TO set.
 """
 
-import os
-import time
-
 import pytest
 
-import server
+from sandbox_env import SEND_TO, STAMP, EMAIL, ok, run, sandbox_env, skip_without_sandbox  # noqa: F401
 
-EMAIL = os.getenv("SANDBOX_SUPERFAKTURA_EMAIL")
-KEY = os.getenv("SANDBOX_SUPERFAKTURA_API_KEY")
-URL = os.getenv("SANDBOX_SUPERFAKTURA_URL", "https://sandbox.superfaktura.sk").rstrip("/")
-COMPANY_ID = os.getenv("SANDBOX_SUPERFAKTURA_COMPANY_ID")
-SEND_TO = os.getenv("SANDBOX_SUPERFAKTURA_SEND_TO")
-
-pytestmark = pytest.mark.skipif(not (EMAIL and KEY), reason="no SuperFaktura sandbox credentials")
+pytestmark = skip_without_sandbox
 
 STATE = {}
-STAMP = time.strftime("%Y%m%d-%H%M%S")
-
-
-@pytest.fixture(autouse=True, scope="module")
-def sandbox_env():
-    assert URL.startswith("https://sandbox.superfaktura."), "SANDBOX_SUPERFAKTURA_URL must be a sandbox URL"
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setenv("SUPERFAKTURA_EMAIL", EMAIL)
-        mp.setenv("SUPERFAKTURA_API_KEY", KEY)
-        mp.setenv("SUPERFAKTURA_API_URL", URL)
-        if COMPANY_ID:
-            mp.setenv("SUPERFAKTURA_COMPANY_ID", COMPANY_ID)
-        else:
-            mp.delenv("SUPERFAKTURA_COMPANY_ID", raising=False)
-        assert server._get_client().base_url.startswith("https://sandbox.superfaktura.")
-        yield
-
-
-def run(_tool, **kwargs):
-    return getattr(server, _tool).fn(**kwargs)
-
-
-def ok(resp):
-    assert isinstance(resp, (dict, list)), resp
-    if isinstance(resp, dict):
-        assert resp.get("status") != "failed", resp
-        assert resp.get("error") in (None, 0, "0", False), resp
-    return resp
 
 
 def test_create_client():
