@@ -23,6 +23,11 @@ internal milestones before the package was versioned.
 - `mark_invoice_paid`: `invoice_payments/add/ajax:1/api:1`
 - `delete_invoice`, `delete_expense`: GET, as documented (were DELETE)
 - `SuperFakturaClient()` without arguments ignored `SUPERFAKTURA_COUNTRY`
+- `mark_invoice_paid` and `get_invoice_pdf` accept an invoice only when the API returns an `Invoice`
+  object; a body without `error` but without an invoice is a failure, not success (before, a payment
+  could be posted for an invoice the API did not return)
+- Every tool's HTTP method and URL is checked by a test against the docs at a pinned commit
+  (`tests/test_docs.py`); `update_client` is PATCH and `delete_client` is DELETE, as clients.md documents
 - `list_invoices` status values per the docs (1 issued, 2 partially paid, 3 paid, 99 overdue)
 
 ### Security and safety (pre-release review)
@@ -30,7 +35,7 @@ internal milestones before the package was versioned.
   percent-encoded and languages are checked against the 14 documented codes (before, a crafted
   `language` could turn the PDF call into `GET /invoices/delete/...`)
 - MCP annotations on all 21 tools (read-only / destructive); `SUPERFAKTURA_READ_ONLY=1` leaves out
-  every write tool; delete tools say PERMANENT; `send_invoice` needs an explicit recipient
+  the 12 write tools (9 tools remain), decided when the server starts (a `.env` counts), never on import; delete tools say PERMANENT; `send_invoice` needs an explicit recipient
 - No HTTP mode: `--http` is refused, `PORT` no longer switches transport, and the dead per-request
   credential path is gone (it was never reachable through fastmcp's Context)
 - `.env` is read only when the server is started, never on import

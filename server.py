@@ -196,6 +196,22 @@ class SuperFakturaClient:
         return self._request("DELETE", endpoint)
 
 
+def _view_invoice(sf: SuperFakturaClient, invoice_id: int):
+    """GET invoices/view. Returns (Invoice dict, None) or (None, error dict).
+
+    Success is explicit, per invoice.md "Get invoice detail": the body carries an "Invoice"
+    object with an id and has no `error` key. "Wrong invoice" is {"error": 1, "error_message": ...}.
+    A missing `error` key alone never counts as success."""
+    body = sf.get(f"invoices/view/{invoice_id}.json")
+    if not isinstance(body, dict) or body.get("status") == "failed":
+        return None, body if isinstance(body, dict) else {"error": "Unexpected response.", "status": "failed"}
+    invoice = body.get("Invoice")
+    if body.get("error") in (None, 0, "0") and isinstance(invoice, dict) and invoice.get("id"):
+        return invoice, None
+    message = body.get("error_message") or body.get("message") or "no Invoice in the response"
+    return None, {"error": f"Invoice {invoice_id} not found: {message}", "status": "failed", "response": body}
+
+
 def _get_nested_value(data: Any, path: str) -> Any:
     """
     Get value from nested dictionary using dot notation.
@@ -771,10 +787,10 @@ def mark_invoice_paid(
     if not payment_date:
         payment_date = datetime.now().strftime("%Y-%m-%d")
     if not currency:
-        invoice = sf.get(f"invoices/view/{invoice_id}.json")
-        if invoice.get("status") == "failed" or invoice.get("error") not in (None, 0, "0"):
-            return invoice
-        currency = (invoice.get("Invoice") or {}).get("invoice_currency")
+        invoice, err = _view_invoice(sf, invoice_id)
+        if err:
+            return err
+        currency = invoice.get("invoice_currency")
 
     # docs name the field `date`; the API response and stored payment use `created`, so send both
     payment = {"invoice_id": invoice_id, "amount": amount, "payment_type": payment_type,
@@ -1419,10 +1435,10 @@ context: Context = None,
         if not lang:
             return _bad_language(language)
     sf = _get_client(context)
-    invoice = sf.get(f"invoices/view/{invoice_id}.json")
-    if invoice.get("status") == "failed" or invoice.get("error") not in (None, 0, "0"):
-        return invoice  # the call failed (auth, network, HTTP) or SuperFaktura returned an error
-    token = (invoice.get("Invoice") or {}).get("token")
+    invoice, err = _view_invoice(sf, invoice_id)
+    if err:
+        return err
+    token = invoice.get("token")
     if not token:
         return {"error": f"Invoice {invoice_id} has no PDF token in the response.", "status": "failed", "response": invoice}
 
@@ -1573,9 +1589,12 @@ context: Context = None,
     return _get_client(context).get(f"expenses/delete/{expense_id}")
 
 
-if os.getenv("SUPERFAKTURA_READ_ONLY", "").strip().lower() in ("1", "true", "yes"):
-    for _name in WRITE_TOOLS:
-        mcp.remove_tool(_name)
+def _apply_read_only() -> None:
+    """SUPERFAKTURA_READ_ONLY=1 leaves the write tools out. Decided when the server starts
+    (after .env is loaded), never at import, so importing server.py always gives every tool."""
+    if os.getenv("SUPERFAKTURA_READ_ONLY", "").strip().lower() in ("1", "true", "yes"):
+        for name in WRITE_TOOLS:
+            mcp.remove_tool(name)
 
 
 def main():
@@ -1589,6 +1608,7 @@ def main():
         print("superfaktura-mcp runs over stdio only; --http is not supported in 0.1.0.", file=sys.stderr)
         sys.exit(2)
     load_dotenv()  # a .env next to the server, for local runs only (never at import)
+    _apply_read_only()
     mcp.run(transport="stdio")
 
 

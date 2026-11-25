@@ -16,7 +16,6 @@ REAL_VARS = (
     "SUPERFAKTURA_COMPANY_ID",
     "SUPERFAKTURA_COUNTRY",
     "SUPERFAKTURA_API_URL",
-    "SUPERFAKTURA_READ_ONLY",  # would drop the write tools at import
 )
 for name in REAL_VARS:
     os.environ.pop(name, None)

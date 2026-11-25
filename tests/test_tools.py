@@ -124,10 +124,12 @@ def test_pdf_failed_view_is_returned_as_is(calls, monkeypatch):
     assert run("get_invoice_pdf", invoice_id=7) == {"error": "401 Unauthorized", "status": "failed"}
 
 
-def test_pdf_api_error_is_returned_as_is(calls, monkeypatch):
+def test_pdf_api_error_is_a_failed_result(calls, monkeypatch):
+    # an API error body becomes status "failed" with SuperFaktura's message and the raw body
     err = {"error": 1, "error_message": "Invoice not found"}
     monkeypatch.setattr(server.SuperFakturaClient, "get", lambda self, e: err)
-    assert run("get_invoice_pdf", invoice_id=7) == err
+    r = run("get_invoice_pdf", invoice_id=7)
+    assert r["status"] == "failed" and "Invoice not found" in r["error"] and r["response"] == err
 
 
 def test_repeat_last_invoice_flow(calls):

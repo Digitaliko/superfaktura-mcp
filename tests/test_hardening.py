@@ -193,12 +193,21 @@ def test_p1_annotations():
     assert tools["send_invoice"].description.startswith("Sends a real email to the customer. Confirm with the user first.")
 
 
-def test_p1_read_only_mode():
-    code = "import asyncio, server; print(sorted(asyncio.run(server.mcp.get_tools())))"
-    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60,
-                         env={"PATH": os.environ["PATH"], "PYTHONPATH": str(ROOT), "SUPERFAKTURA_READ_ONLY": "1"})
-    names = set(eval(out.stdout))
-    assert names and not (names & WRITE)
+def test_p1_read_only_mode(tmp_path):
+    # the started server (main) leaves the write tools out; import alone never does (r5-0)
+    import asyncio
+    from fastmcp import Client
+    from fastmcp.client.transports import StdioTransport
+
+    env = {"PATH": os.environ["PATH"], "HOME": str(tmp_path), "SUPERFAKTURA_READ_ONLY": "1"}
+    transport = StdioTransport(command=sys.executable, args=[str(ROOT / "server.py")], env=env, cwd=str(tmp_path))
+
+    async def names():
+        async with Client(transport) as client:
+            return {t.name for t in await client.list_tools()}
+
+    got = asyncio.run(names())
+    assert len(got) == 21 - len(WRITE) and not (got & WRITE)
 
 
 def test_p1_send_invoice_needs_recipient(http):
@@ -229,3 +238,32 @@ def test_c7_http_404_is_failed_even_without_error_key(http):
     http["queue"] = [Resp(status=404, payload={"message": "Not found"}, text="Not found")]
     r = run("get_invoice_pdf", invoice_id=7)
     assert r["status"] == "failed" and r["http_status"] == 404
+
+
+# r5-0: SUPERFAKTURA_READ_ONLY is decided when the server starts, never at import
+def test_r5_import_keeps_every_tool_with_read_only_set():
+    code = "import asyncio, server; print(len(asyncio.run(server.mcp.get_tools())))"
+    for value in ("", "1"):
+        out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60,
+                             env={"PATH": os.environ["PATH"], "PYTHONPATH": str(ROOT),
+                                  "SUPERFAKTURA_READ_ONLY": value})
+        assert out.returncode == 0, out.stderr
+        assert out.stdout.strip() == "21", (value, out.stdout, out.stderr)
+
+
+# r5-2: invoices/view succeeds only with an "Invoice" object (invoice.md "Get invoice detail":
+# success has no `error` key, "Wrong invoice" is {"error": 1, "error_message": ...})
+@pytest.mark.parametrize("body", [{}, {"message": "Invoice not found"}, {"Invoice": None}, {"error": 1}])
+def test_r5_payment_needs_a_real_invoice(http, body):
+    http["queue"] = [Resp(payload=body)]
+    r = run("mark_invoice_paid", invoice_id=7, amount=10)
+    assert r["status"] == "failed"
+    assert [c[0] for c in http["calls"]] == ["GET"]  # no payment was posted
+
+
+@pytest.mark.parametrize("body", [{}, {"message": "Invoice not found"}, {"error": 1}])
+def test_r5_pdf_needs_a_real_invoice(http, body):
+    http["queue"] = [Resp(payload=body)]
+    r = run("get_invoice_pdf", invoice_id=7)
+    assert r["status"] == "failed" and "not found" in r["error"].lower()
+    assert len(http["calls"]) == 1  # no PDF download was tried
