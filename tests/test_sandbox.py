@@ -1,0 +1,153 @@
+"""Every tool end to end against a SuperFaktura SANDBOX account.
+
+Runs only when SUPERFAKTURA_SANDBOX_EMAIL and SUPERFAKTURA_SANDBOX_API_KEY are set;
+skipped otherwise. It refuses any base URL that is not sandbox.superfaktura.*, so a
+production key can never be used by mistake. Creates a test client, invoices and an
+expense, and deletes them at the end.
+
+    SUPERFAKTURA_SANDBOX_EMAIL=... SUPERFAKTURA_SANDBOX_API_KEY=... \\
+    [SUPERFAKTURA_SANDBOX_COMPANY_ID=...] SUPERFAKTURA_SANDBOX_COUNTRY=sandbox-sk uv run --with pytest pytest tests/test_sandbox.py -v
+
+send_invoice sends a real email, so it runs only with SUPERFAKTURA_SANDBOX_SEND_TO set.
+"""
+
+import os
+import time
+
+import pytest
+
+import server
+
+EMAIL = os.getenv("SUPERFAKTURA_SANDBOX_EMAIL")
+KEY = os.getenv("SUPERFAKTURA_SANDBOX_API_KEY")
+COUNTRY = os.getenv("SUPERFAKTURA_SANDBOX_COUNTRY", "sandbox-sk")
+COMPANY_ID = os.getenv("SUPERFAKTURA_SANDBOX_COMPANY_ID")
+SEND_TO = os.getenv("SUPERFAKTURA_SANDBOX_SEND_TO")
+
+pytestmark = pytest.mark.skipif(not (EMAIL and KEY), reason="no SuperFaktura sandbox credentials")
+
+STATE = {}
+STAMP = time.strftime("%Y%m%d-%H%M%S")
+
+
+@pytest.fixture(autouse=True, scope="module")
+def sandbox_env():
+    assert COUNTRY.startswith("sandbox-"), "SUPERFAKTURA_SANDBOX_COUNTRY must be sandbox-sk or sandbox-cz"
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("SUPERFAKTURA_EMAIL", EMAIL)
+        mp.setenv("SUPERFAKTURA_API_KEY", KEY)
+        mp.setenv("SUPERFAKTURA_COUNTRY", COUNTRY)
+        mp.delenv("SUPERFAKTURA_API_URL", raising=False)
+        if COMPANY_ID:
+            mp.setenv("SUPERFAKTURA_COMPANY_ID", COMPANY_ID)
+        else:
+            mp.delenv("SUPERFAKTURA_COMPANY_ID", raising=False)
+        assert server._get_client().base_url.startswith("https://sandbox.superfaktura.")
+        yield
+
+
+def run(_tool, **kwargs):
+    return getattr(server, _tool).fn(**kwargs)
+
+
+def ok(resp):
+    assert isinstance(resp, (dict, list)), resp
+    if isinstance(resp, dict):
+        assert resp.get("status") != "failed", resp
+        assert resp.get("error") in (None, 0, "0", False), resp
+    return resp
+
+
+def test_create_client():
+    r = ok(run("create_client", name=f"MCP sandbox test {STAMP}", email=EMAIL))
+    STATE["client_id"] = int(r["data"]["Client"]["id"])
+
+
+def test_list_clients():
+    ok(run("list_clients", per_page=5))
+
+
+def test_get_client():
+    r = ok(run("get_client", client_id=STATE["client_id"]))
+    assert str(r["Client"]["id"]) == str(STATE["client_id"])
+
+
+def test_update_client():
+    ok(run("update_client", client_id=STATE["client_id"], updates={"city": "Bratislava"}))
+
+
+def test_create_invoice():
+    r = ok(run("create_invoice", client_id=STATE["client_id"], name=f"MCP test {STAMP}",
+               invoice_items=[{"name": "Hosting", "unit_price": 50, "quantity": 1, "tax": 23}]))
+    STATE["invoice_id"] = int(r["data"]["Invoice"]["id"])
+
+
+def test_list_invoices():
+    r = ok(run("list_invoices", client_id=STATE["client_id"], per_page=5))
+    assert r.get("items"), r
+
+
+def test_get_invoice():
+    r = ok(run("get_invoice", invoice_id=STATE["invoice_id"]))
+    STATE["last_items"] = r["InvoiceItem"]
+
+
+def test_repeat_last_invoice():
+    """'Issue this month's invoice like last time': a new invoice from the last one's items."""
+    items = [{k: i[k] for k in ("name", "unit_price", "quantity", "tax") if k in i} for i in STATE["last_items"]]
+    r = ok(run("create_invoice", client_id=STATE["client_id"], name=f"MCP repeat {STAMP}", invoice_items=items))
+    STATE["repeat_id"] = int(r["data"]["Invoice"]["id"])
+    assert r["data"]["InvoiceItem"][0]["name"] == "Hosting"
+
+
+def test_edit_invoice():
+    ok(run("edit_invoice", invoice_id=STATE["invoice_id"], updates={"comment": "edited by MCP test"}))
+
+
+def test_set_invoice_language():
+    ok(run("set_invoice_language", invoice_id=STATE["invoice_id"], language="eng"))
+
+
+def test_get_invoice_pdf():
+    r = ok(run("get_invoice_pdf", invoice_id=STATE["invoice_id"]))
+    with open(r["path"], "rb") as f:
+        assert f.read(4) == b"%PDF"
+
+
+def test_mark_invoice_paid():
+    ok(run("mark_invoice_paid", invoice_id=STATE["invoice_id"], amount=61.5))
+
+
+@pytest.mark.skipif(not SEND_TO, reason="SUPERFAKTURA_SANDBOX_SEND_TO not set (sends a real email)")
+def test_send_invoice():
+    ok(run("send_invoice", invoice_id=STATE["invoice_id"], email=SEND_TO))
+
+
+def test_create_expense():
+    r = ok(run("create_expense", name=f"MCP expense {STAMP}", amount=12.5, currency="EUR"))
+    STATE["expense_id"] = int(r["data"]["Expense"]["id"])
+
+
+def test_list_expenses():
+    ok(run("list_expenses", per_page=5))
+
+
+def test_get_expense():
+    ok(run("get_expense", expense_id=STATE["expense_id"]))
+
+
+def test_edit_expense():
+    ok(run("edit_expense", expense_id=STATE["expense_id"], updates={"name": f"MCP expense edited {STAMP}"}))
+
+
+def test_delete_expense():
+    ok(run("delete_expense", expense_id=STATE["expense_id"]))
+
+
+def test_delete_invoices():
+    ok(run("delete_invoice", invoice_id=STATE["repeat_id"]))
+    ok(run("delete_invoice", invoice_id=STATE["invoice_id"]))
+
+
+def test_delete_client():
+    ok(run("delete_client", client_id=STATE["client_id"]))

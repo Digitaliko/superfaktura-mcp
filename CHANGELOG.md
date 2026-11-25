@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.1.0] - 2026-11-25
+
+First tagged release and first PyPI package. The 1.0.0 and 2.0.0 entries below were
+internal milestones before the package was versioned.
+
+### Added
+- `uvx superfaktura-mcp`: console script, PyPI metadata, `server.json` for the official MCP Registry
+- Tests: every tool against mocked HTTP, a stdio smoke test that lists the tools, and an
+  end-to-end suite against a SuperFaktura sandbox account (`tests/test_sandbox.py`)
+- CI on Python 3.10 and 3.12
+- `send_invoice`: `pdf_language`
+
+### Fixed (aligned with https://github.com/superfaktura/docs)
+- `send_invoice` sent `{"Invoice": ...}`; the API expects `{"Email": {"invoice_id", "to"}}`.
+  Without `email` it now uses the client's email on the invoice
+- `get_invoice_pdf` called `invoices/pdf/{id}` without the required token and parsed the PDF
+  as JSON; it now reads the token, downloads the PDF and saves it to a file
+- `set_invoice_language`: `GET invoices/setinvoicelanguage/{id}/lang:{lang}` (was a POST body)
+- `mark_invoice_paid`: `invoice_payments/add/ajax:1/api:1`
+- `delete_invoice`, `delete_expense`: GET, as documented (were DELETE)
+- `SuperFakturaClient()` without arguments ignored `SUPERFAKTURA_COUNTRY`
+
+### Removed
+- `jsonpath-ng` dependency (unused)
+
 ## [2.0.0] - 2025-11-02
 
 ### Major Enhancements

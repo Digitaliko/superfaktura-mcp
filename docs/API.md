@@ -101,7 +101,10 @@ Send invoice via email.
 
 **Parameters:**
 - `invoice_id` (int) - Invoice ID
-- `email` (str, optional) - Override email address (uses client email by default)
+- `email` (str, optional) - Recipient (defaults to the client's email on the invoice)
+- `pdf_language` (str, optional) - PDF language (eng, slo, cze, deu, etc.)
+
+SuperFaktura allows 100 emails per hour.
 
 ### mark_invoice_paid
 
@@ -114,7 +117,7 @@ Mark invoice as paid by recording a payment.
 
 ### get_invoice_pdf
 
-Get invoice PDF download URL and metadata.
+Download the invoice PDF to a local temp file; returns `{"path", "bytes"}`.
 
 **Parameters:**
 - `invoice_id` (int) - Invoice ID

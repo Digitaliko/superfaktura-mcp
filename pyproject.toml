@@ -1,12 +1,25 @@
 [project]
 name = "superfaktura-mcp"
 version = "0.1.0"
-description = "Model Context Protocol server for SuperFaktura invoicing system - enables AI assistants to manage invoices, clients, and expenses"
+description = "MCP server for SuperFaktura (SK, CZ, AT): invoices, clients and expenses for AI assistants"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 authors = [
     {name = "Filip Papranec", email = "filip@digitaliko.com"}
+]
+maintainers = [
+    {name = "Digitaliko", email = "filip@digitaliko.com"}
+]
+keywords = ["mcp", "mcp-server", "superfaktura", "invoicing", "slovakia", "czech", "claude"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial :: Accounting",
 ]
 
 dependencies = [
@@ -14,15 +27,26 @@ dependencies = [
     "requests>=2.31.0",
     "python-dotenv>=1.0.0",
     "uvicorn>=0.27.0",
-    "jsonpath-ng>=1.6.0",
 ]
 
+[project.scripts]
+superfaktura-mcp = "server:main"
+
 [project.urls]
-Homepage = "https://github.com/digitaliko/superfaktura-mcp"
-Repository = "https://github.com/digitaliko/superfaktura-mcp"
+Homepage = "https://github.com/Digitaliko/superfaktura-mcp"
+Repository = "https://github.com/Digitaliko/superfaktura-mcp"
+Issues = "https://github.com/Digitaliko/superfaktura-mcp/issues"
 Documentation = "https://github.com/superfaktura/docs"
 "API Reference" = "https://github.com/xseman/superfaktura.openapi"
+
+[dependency-groups]
+dev = ["pytest>=8"]
 
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+# ponytail: one top-level module named "server"; fine in uvx's isolated env, a package
+# (superfaktura_mcp/) is the upgrade if this is ever imported next to other code.
+py-modules = ["server"]

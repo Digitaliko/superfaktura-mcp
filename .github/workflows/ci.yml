@@ -1,0 +1,21 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv run --python ${{ matrix.python }} --with pytest pytest -q
+      - name: Package builds and the uvx entry point starts over stdio
+        run: |
+          uv build
+          timeout 60 uvx --from dist/*.whl superfaktura-mcp </dev/null

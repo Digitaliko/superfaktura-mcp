@@ -108,9 +108,9 @@ class SuperFakturaClient:
         email: Optional[str] = None,
         api_key: Optional[str] = None,
         api_url: Optional[str] = None,
-        country: str = "sk",
+        country: Optional[str] = None,
         company_id: Optional[str] = None,
-        module: str = "superfaktura-mcp/2.0",
+        module: str = "superfaktura-mcp/0.1.0",
     ):
         """
         Initialize SuperFaktura API client.
@@ -121,7 +121,7 @@ class SuperFakturaClient:
             api_url: Custom API URL (falls back to SUPERFAKTURA_API_URL env var)
             country: Country code - sk, cz, at, sandbox-sk, sandbox-cz (default: sk)
             company_id: Company ID (optional, falls back to SUPERFAKTURA_COMPANY_ID env var)
-            module: Module identifier for API (default: superfaktura-mcp/2.0)
+            module: Module identifier for API (default: superfaktura-mcp/0.1.0)
 
         Raises:
             ValueError: If credentials are not provided via parameters or environment variables
@@ -179,6 +179,15 @@ class SuperFakturaClient:
             return response.json()
         except requests.exceptions.RequestException as e:
             return {"error": str(e), "status": "failed"}
+
+    def get_bytes(self, endpoint: str) -> bytes:
+        """GET a binary file (PDF). Raises on HTTP errors."""
+        response = requests.request(
+            method="GET", url=f"{self.base_url}/{endpoint}", json=None,
+            headers=self._get_headers(), timeout=60,
+        )
+        response.raise_for_status()
+        return response.content
 
     def get(self, endpoint: str) -> Dict[str, Any]:
         """GET request."""
@@ -746,23 +755,32 @@ def get_invoice(
 
 @mcp.tool()
 def send_invoice(invoice_id: int, email: Optional[str] = None,
+pdf_language: Optional[str] = None,
 context: Context = None,
 ) -> Dict[str, Any]:
     """
-    Send an invoice via email.
+    Send an invoice via email (SuperFaktura limit: 100 emails per hour).
 
     Args:
         invoice_id: ID of the invoice to send
-        email: Optional override email address (uses client email by default)
+        email: Recipient address (defaults to the client's email on the invoice)
+        pdf_language: Optional PDF language (eng, slo, cze, deu, ...)
 
     Returns:
         Response indicating if email was sent successfully
     """
-    data = {"Invoice": {"id": invoice_id}}
-    if email:
-        data["Invoice"]["email"] = email
+    sf = _get_client(context)
+    if not email:
+        invoice = sf.get(f"invoices/view/{invoice_id}.json")
+        email = (invoice.get("Client") or {}).get("email")
+        if not email:
+            return {"error": "No email given and the invoice's client has none.", "status": "failed"}
 
-    return _get_client(context).post("invoices/send", data)
+    data: Dict[str, Any] = {"Email": {"invoice_id": invoice_id, "to": email}}
+    if pdf_language:
+        data["Email"]["pdf_language"] = pdf_language
+
+    return sf.post("invoices/send", data)
 
 
 @mcp.tool()
@@ -793,7 +811,7 @@ def mark_invoice_paid(
         }
     }
 
-    return _get_client(context).post("invoice_payments/add", payment_data)
+    return _get_client(context).post("invoice_payments/add/ajax:1/api:1", payment_data)
 
 
 @mcp.tool()
@@ -1411,20 +1429,37 @@ def get_invoice_pdf(invoice_id: int, language: Optional[str] = None,
 context: Context = None,
 ) -> Dict[str, Any]:
     """
-    Get invoice PDF download URL and metadata.
+    Download the invoice PDF to a local file.
 
     Args:
         invoice_id: ID of the invoice
         language: Optional language code (eng, slo, cze, deu, etc.)
 
     Returns:
-        Response with PDF URL and metadata
+        {"path": local file path, "bytes": size}, or an error
     """
-    endpoint = f"invoices/pdf/{invoice_id}"
-    if language:
-        endpoint += f"/lang:{language}"
+    import tempfile
 
-    return _get_client(context).get(endpoint)
+    sf = _get_client(context)
+    invoice = sf.get(f"invoices/view/{invoice_id}.json")
+    token = (invoice.get("Invoice") or {}).get("token")
+    if not token:
+        return {"error": f"Invoice {invoice_id} not found or has no token.", "status": "failed", "response": invoice}
+
+    endpoint = f"invoices/pdf/{invoice_id}/token:{token}"
+    if language:
+        endpoint = f"{language}/{endpoint}"
+    try:
+        pdf = sf.get_bytes(endpoint)
+    except requests.exceptions.RequestException as e:
+        return {"error": str(e), "status": "failed"}
+
+    # ponytail: a local temp file suits stdio use; a hosted HTTP deployment would need
+    # a resource or base64 return instead.
+    path = os.path.join(tempfile.gettempdir(), f"superfaktura-invoice-{invoice_id}.pdf")
+    with open(path, "wb") as f:
+        f.write(pdf)
+    return {"path": path, "bytes": len(pdf)}
 
 
 @mcp.tool()
@@ -1440,7 +1475,7 @@ context: Context = None,
     Returns:
         Deletion response
     """
-    return _get_client(context).delete(f"invoices/delete/{invoice_id}")
+    return _get_client(context).get(f"invoices/delete/{invoice_id}")
 
 
 @mcp.tool()
@@ -1457,8 +1492,7 @@ context: Context = None,
     Returns:
         Update response
     """
-    data = {"InvoiceSetting": {"language": language}}
-    return _get_client(context).post(f"invoices/setinvoicelanguage/{invoice_id}", data)
+    return _get_client(context).get(f"invoices/setinvoicelanguage/{invoice_id}/lang:{language}")
 
 
 # ============================================================================
@@ -1526,10 +1560,10 @@ context: Context = None,
     Returns:
         Deletion response
     """
-    return _get_client(context).delete(f"expenses/delete/{expense_id}")
+    return _get_client(context).get(f"expenses/delete/{expense_id}")
 
 
-if __name__ == "__main__":
+def main():
     import sys
 
     # Support both HTTP (for Smithery hosted) and stdio (for local)
@@ -1545,3 +1579,7 @@ if __name__ == "__main__":
         # stdio mode for local Claude Desktop
         # Users provide credentials via env vars
         mcp.run(transport="stdio")
+
+
+if __name__ == "__main__":
+    main()

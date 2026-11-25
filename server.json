@@ -1,0 +1,52 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Digitaliko/superfaktura-mcp",
+  "title": "SuperFaktura",
+  "description": "SuperFaktura invoicing (SK, CZ, AT): create, list and send invoices, manage clients and expenses.",
+  "version": "0.1.0",
+  "repository": {
+    "url": "https://github.com/Digitaliko/superfaktura-mcp",
+    "source": "github"
+  },
+  "websiteUrl": "https://www.digitaliko.com",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "superfaktura-mcp",
+      "version": "0.1.0",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "SUPERFAKTURA_EMAIL",
+          "description": "Email of your SuperFaktura account",
+          "isRequired": true,
+          "format": "string"
+        },
+        {
+          "name": "SUPERFAKTURA_API_KEY",
+          "description": "API key from Tools > API in SuperFaktura",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "SUPERFAKTURA_COUNTRY",
+          "description": "sk, cz, at, sandbox-sk or sandbox-cz",
+          "isRequired": false,
+          "default": "sk",
+          "format": "string"
+        },
+        {
+          "name": "SUPERFAKTURA_COMPANY_ID",
+          "description": "Company ID, only for accounts with several companies",
+          "isRequired": false,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}
