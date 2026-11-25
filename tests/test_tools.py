@@ -68,6 +68,8 @@ CASES = [
     ("create_client", {"name": "ACME"}, "POST", "clients/create"),
     ("list_clients", {}, "GET", "clients/index.json/page:1/"),
     ("get_client", {"client_id": 3}, "GET", "clients/view/3.json"),
+    # clients.md: "Edit client" is HTTP method PATCH, "Delete client" is HTTP method DELETE
+    # (unlike invoices and expenses, whose deletes are GET); both pass on the sandbox
     ("update_client", {"client_id": 3, "updates": {"name": "B"}}, "PATCH", "clients/edit/3"),
     ("delete_client", {"client_id": 3}, "DELETE", "clients/delete/3"),
     ("create_expense", {"name": "Paper", "amount": 10}, "POST", "expenses/add"),

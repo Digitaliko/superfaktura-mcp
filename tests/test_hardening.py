@@ -223,3 +223,9 @@ def test_p5_country_any_case(monkeypatch):
 def test_c1_slash_number_with_search_is_refused(http):
     r = run("list_invoices", invoice_no_formatted="2026/001", search="ACME")
     assert r["status"] == "failed" and http["calls"] == []
+
+
+def test_c7_http_404_is_failed_even_without_error_key(http):
+    http["queue"] = [Resp(status=404, payload={"message": "Not found"}, text="Not found")]
+    r = run("get_invoice_pdf", invoice_id=7)
+    assert r["status"] == "failed" and r["http_status"] == 404
