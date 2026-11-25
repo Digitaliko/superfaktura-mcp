@@ -4,8 +4,6 @@ and server.json matches the package version."""
 import json
 from pathlib import Path
 
-import pytest
-
 try:
     import tomllib
 except ModuleNotFoundError:  # Python 3.10

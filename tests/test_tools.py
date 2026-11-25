@@ -102,6 +102,8 @@ def test_send_invoice_defaults_to_client_email(calls):
 
 
 def test_pdf_is_saved_to_a_file(calls):
+    # docs, invoice.md "Get invoice PDF": /[{LANGUAGE}/]invoices/pdf/{INVOICE_ID}/token:{TOKEN},
+    # example https://moja.superfaktura.sk/slo/invoices/pdf/1275/token:09feb1bd
     out = run("get_invoice_pdf", invoice_id=7, language="eng")
     assert calls[-1][1] == BASE + "eng/invoices/pdf/7/token:abc123"
     with open(out["path"], "rb") as f:
@@ -112,6 +114,12 @@ def test_pdf_failed_view_is_returned_as_is(calls, monkeypatch):
     monkeypatch.setattr(server.SuperFakturaClient, "get",
                         lambda self, e: {"error": "401 Unauthorized", "status": "failed"})
     assert run("get_invoice_pdf", invoice_id=7) == {"error": "401 Unauthorized", "status": "failed"}
+
+
+def test_pdf_api_error_is_returned_as_is(calls, monkeypatch):
+    err = {"error": 1, "error_message": "Invoice not found"}
+    monkeypatch.setattr(server.SuperFakturaClient, "get", lambda self, e: err)
+    assert run("get_invoice_pdf", invoice_id=7) == err
 
 
 def test_repeat_last_invoice_flow(calls):

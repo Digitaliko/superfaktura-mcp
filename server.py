@@ -1442,11 +1442,11 @@ context: Context = None,
 
     sf = _get_client(context)
     invoice = sf.get(f"invoices/view/{invoice_id}.json")
-    if invoice.get("status") == "failed":
-        return invoice  # the API call itself failed (auth, network, HTTP error)
+    if invoice.get("status") == "failed" or invoice.get("error") not in (None, 0, "0"):
+        return invoice  # the call failed (auth, network, HTTP) or SuperFaktura returned an error
     token = (invoice.get("Invoice") or {}).get("token")
     if not token:
-        return {"error": f"Invoice {invoice_id} not found or has no token.", "status": "failed", "response": invoice}
+        return {"error": f"Invoice {invoice_id} has no PDF token in the response.", "status": "failed", "response": invoice}
 
     # URL per the docs: /[{LANGUAGE}/]invoices/pdf/{INVOICE_ID}/token:{TOKEN}
     endpoint = f"invoices/pdf/{invoice_id}/token:{token}"
