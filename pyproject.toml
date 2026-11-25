@@ -40,7 +40,7 @@ Documentation = "https://github.com/superfaktura/docs"
 "API Reference" = "https://github.com/xseman/superfaktura.openapi"
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "tomli>=2; python_version < '3.11'"]
 
 [build-system]
 requires = ["setuptools>=61.0"]

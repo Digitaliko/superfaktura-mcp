@@ -14,8 +14,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
-      - run: uv run --python ${{ matrix.python }} --with pytest pytest -q
-      - name: Package builds and the uvx entry point starts over stdio
+      - run: uv run --python ${{ matrix.python }} pytest -q
+      - name: The built wheel, run by uvx, serves all tools over stdio
         run: |
-          uv build
-          timeout 60 uvx --from dist/*.whl superfaktura-mcp </dev/null
+          uv build --wheel
+          WHEEL=$(ls dist/superfaktura_mcp-*.whl)
+          SMOKE_COMMAND="uvx --python ${{ matrix.python }} --from $PWD/$WHEEL superfaktura-mcp" \
+            uv run --python ${{ matrix.python }} pytest -q tests/test_stdio_smoke.py

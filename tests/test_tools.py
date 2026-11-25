@@ -108,6 +108,12 @@ def test_pdf_is_saved_to_a_file(calls):
         assert f.read().startswith(b"%PDF")
 
 
+def test_pdf_failed_view_is_returned_as_is(calls, monkeypatch):
+    monkeypatch.setattr(server.SuperFakturaClient, "get",
+                        lambda self, e: {"error": "401 Unauthorized", "status": "failed"})
+    assert run("get_invoice_pdf", invoice_id=7) == {"error": "401 Unauthorized", "status": "failed"}
+
+
 def test_repeat_last_invoice_flow(calls):
     """The 'issue this month's invoice like last time' flow the tools support:
     list the client's invoices, read the last one, create a new one from its items."""

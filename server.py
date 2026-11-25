@@ -1442,10 +1442,13 @@ context: Context = None,
 
     sf = _get_client(context)
     invoice = sf.get(f"invoices/view/{invoice_id}.json")
+    if invoice.get("status") == "failed":
+        return invoice  # the API call itself failed (auth, network, HTTP error)
     token = (invoice.get("Invoice") or {}).get("token")
     if not token:
         return {"error": f"Invoice {invoice_id} not found or has no token.", "status": "failed", "response": invoice}
 
+    # URL per the docs: /[{LANGUAGE}/]invoices/pdf/{INVOICE_ID}/token:{TOKEN}
     endpoint = f"invoices/pdf/{invoice_id}/token:{token}"
     if language:
         endpoint = f"{language}/{endpoint}"
@@ -1453,12 +1456,17 @@ context: Context = None,
         pdf = sf.get_bytes(endpoint)
     except requests.exceptions.RequestException as e:
         return {"error": str(e), "status": "failed"}
+    if not pdf.startswith(b"%PDF"):
+        return {"error": "SuperFaktura did not return a PDF.", "status": "failed"}
 
     # ponytail: a local temp file suits stdio use; a hosted HTTP deployment would need
     # a resource or base64 return instead.
     path = os.path.join(tempfile.gettempdir(), f"superfaktura-invoice-{invoice_id}.pdf")
-    with open(path, "wb") as f:
-        f.write(pdf)
+    try:
+        with open(path, "wb") as f:
+            f.write(pdf)
+    except OSError as e:
+        return {"error": f"Could not save the PDF: {e}", "status": "failed"}
     return {"path": path, "bytes": len(pdf)}
 
 

@@ -109,9 +109,10 @@ def test_set_invoice_language():
 
 
 def test_get_invoice_pdf():
-    r = ok(run("get_invoice_pdf", invoice_id=STATE["invoice_id"]))
-    with open(r["path"], "rb") as f:
-        assert f.read(4) == b"%PDF"
+    for lang in (None, "eng"):  # eng: the documented /eng/invoices/pdf/... prefix
+        r = ok(run("get_invoice_pdf", invoice_id=STATE["invoice_id"], language=lang))
+        with open(r["path"], "rb") as f:
+            assert f.read(4) == b"%PDF"
 
 
 def test_mark_invoice_paid():

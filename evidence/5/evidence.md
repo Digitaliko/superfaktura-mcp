@@ -41,7 +41,7 @@ Merging deploys nothing. The tag and GitHub release only publish the source.
 ## Proof
 - Red, before the fix (`04b812e`, tests only): `9 failed, 17 passed`. Failing: delete_invoice, mark_invoice_paid, get_invoice_pdf, set_invoice_language, delete_expense endpoints, the send_invoice body (x2), the PDF file, and the country default.
 - Green, after (mocked): `29 passed, 20 skipped` (20 skipped = the sandbox suite without keys).
-- Sandbox, end to end: `19 passed, 1 skipped in 9.64s` (`tests/test_sandbox.py`; skipped = send_invoice).
+- Sandbox, end to end: `19 passed, 1 skipped in 10.88s` (re-run after review fixes; the PDF is checked with and without the `/eng/` language prefix) (`tests/test_sandbox.py`; skipped = send_invoice).
 - Demo, tool calls in order: `list_clients(search "Demo s.r.o.")` -> none, `list_clients(search "Demo")` -> none, `create_client("Demo s.r.o.")` -> id 104114, `create_invoice(client 104114, "Konzultácia" 1 x 50 EUR)` -> id 381212, number 2026019.
 - Image: `01-demo-invoice-sandbox-after.jpg` (invoice 2026019 in the sandbox UI; the supplier fields are sandbox placeholders)
 
