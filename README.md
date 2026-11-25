@@ -1,7 +1,6 @@
 # SuperFaktura MCP Server
 
 [![PyPI](https://img.shields.io/pypi/v/superfaktura-mcp)](https://pypi.org/project/superfaktura-mcp/)
-[![CI](https://github.com/Digitaliko/superfaktura-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Digitaliko/superfaktura-mcp/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/Digitaliko/superfaktura-mcp)](LICENSE)
 [![Glama score](https://glama.ai/mcp/servers/Digitaliko/superfaktura-mcp/badges/score.svg)](https://glama.ai/mcp/servers/Digitaliko/superfaktura-mcp)
 

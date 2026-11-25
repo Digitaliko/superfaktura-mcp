@@ -17,10 +17,10 @@
 - **OSS5 · Recurring invoices are not in the public API** The docs show only a `recurring` field on invoices, with no endpoint to list, edit or create recurring invoices.
 
 ## What happened
-- Every tool's URL, method and body checked against https://github.com/superfaktura/docs. 6 tools did not match. They are fixed and each has a mocked test.
+- Every tool's URL, method and body checked against the SuperFaktura docs (https://github.com/superfaktura/docs). 6 tools did not match. They are fixed and each has a mocked test.
 - `uvx superfaktura-mcp` works: added a console script and PyPI metadata, removed the unused `jsonpath-ng`, and `requirements.txt` now matches `pyproject.toml` (a test checks it).
 - Tests: a mocked HTTP case per tool, a stdio smoke test (starts the server, lists 19 tools), and `tests/test_sandbox.py` (every tool end to end, runs only with `SUPERFAKTURA_SANDBOX_*` and refuses any non-sandbox URL). CI runs them on Python 3.10 and 3.12, then builds the wheel and starts it with uvx.
-- Registry: `server.json` (validated against the 2025-12-11 schema), with an `mcp-name:` line in the README. README also gained badges (PyPI, CI, license, Glama score and card) and uvx / Claude Code install steps.
+- Registry: `server.json` (validated against the 2025-12-11 schema), with an `mcp-name:` line in the README. README also gained badges (PyPI, license, Glama score and card; a CI badge can follow once the workflow is on main) and uvx / Claude Code install steps.
 - Gaps against the docs went to repo issue `superfaktura-mcp#6` (Inbox): eInvoice/Peppol, missing invoice and expense endpoints, value lists, and the PDF tool in hosted mode.
 
 ## Change
