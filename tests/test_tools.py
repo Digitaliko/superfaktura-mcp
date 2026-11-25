@@ -12,6 +12,10 @@ FAKE = {"SUPERFAKTURA_EMAIL": "test@example.com", "SUPERFAKTURA_API_KEY": "fake-
 
 
 class FakeResponse:
+    status_code = 200
+    headers = {}
+    text = ""
+
     def __init__(self, payload=None, content=b""):
         self._payload = payload if payload is not None else {"error": 0}
         self.content = content
@@ -98,9 +102,9 @@ def test_send_invoice_body_matches_docs(calls):
     assert calls[-1][2] == {"Email": {"invoice_id": 7, "to": "a@example.com", "pdf_language": "slo"}}
 
 
-def test_send_invoice_defaults_to_client_email(calls):
-    run("send_invoice", invoice_id=7)
-    assert calls[-1][2]["Email"]["to"] == "client@example.com"
+def test_send_invoice_never_guesses_the_recipient(calls):
+    assert run("send_invoice", invoice_id=7, email="")["status"] == "failed"
+    assert calls == []
 
 
 def test_pdf_is_saved_to_a_file(calls):
@@ -166,9 +170,9 @@ def test_http_429_becomes_a_failed_result(monkeypatch):
         monkeypatch.setenv(k, v)
 
     class TooMany(FakeResponse):
-        def raise_for_status(self):
-            raise server.requests.exceptions.HTTPError("429 Too Many Requests")
+        status_code = 429
     monkeypatch.setattr(server.requests, "request", lambda **kw: TooMany())
+    monkeypatch.setattr(server.time, "sleep", lambda s: None)
     r = run("list_invoices")
     assert r["status"] == "failed" and "429" in r["error"]
 

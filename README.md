@@ -21,7 +21,8 @@ Model Context Protocol (MCP) server for SuperFaktura invoicing system. Enables A
 - **Expense Management** - Complete expense tracking with file attachments
 - **Advanced Filtering** - 25+ filter options for invoices, comprehensive search across all resources
 - **Field Filtering** - Extract specific fields as tabular data (array of arrays) for easy processing
-- **Multi-tenant Support** - Deploy as public MCP server or run locally
+- **Safe by default** - Tools carry MCP read-only/destructive hints; `SUPERFAKTURA_READ_ONLY=1` exposes only the read tools; deleting and emailing ask the agent to confirm with you first
+- **Runs locally** - stdio server on your computer, one SuperFaktura account per server (no hosted/HTTP mode in 0.1.0)
 
 ---
 
@@ -29,7 +30,7 @@ Model Context Protocol (MCP) server for SuperFaktura invoicing system. Enables A
 
 ### 1. Install
 
-Nothing to install with [uv](https://docs.astral.sh/uv/): `uvx superfaktura-mcp` downloads and runs the server (step 3 does this for you). From source:
+You need [uv](https://docs.astral.sh/uv/) (macOS: `brew install uv`, others: `curl -LsSf https://astral.sh/uv/install.sh | sh`). Then `uvx superfaktura-mcp` downloads and runs the server; step 3 does this for you. From source:
 
 ```bash
 git clone https://github.com/Digitaliko/superfaktura-mcp.git
@@ -64,9 +65,13 @@ uv run server.py        # or: pip install -r requirements.txt && python server.p
 }
 ```
 
+Claude Desktop does not read your shell's PATH: if it cannot start the server, replace `"uvx"` with the full path that `which uvx` prints (for example `/opt/homebrew/bin/uvx`).
+
 Restart Claude Desktop after configuration. From a source checkout use `"command": "python3", "args": ["/absolute/path/to/superfaktura-mcp/server.py"]` instead.
 
 Claude Code: `claude mcp add superfaktura -e SUPERFAKTURA_EMAIL=you@example.com -e SUPERFAKTURA_API_KEY=your-key -- uvx superfaktura-mcp`
+
+Optional: `"SUPERFAKTURA_COMPANY_ID"` for accounts with several companies, `"SUPERFAKTURA_READ_ONLY": "1"` to let the assistant only read.
 
 Try it first against the SuperFaktura sandbox (`SUPERFAKTURA_COUNTRY=sandbox-sk`, account at [sandbox.superfaktura.sk](https://sandbox.superfaktura.sk)), not your live account.
 
@@ -139,6 +144,8 @@ See [API Reference](docs/API.md) for detailed documentation.
 | Austria | `at` | meine.superfaktura.at |
 | Sandbox (SK) | `sandbox-sk` | sandbox.superfaktura.sk |
 | Sandbox (CZ) | `sandbox-cz` | sandbox.superfaktura.cz |
+
+Tested end to end on sandbox.superfaktura.sk. CZ and AT use the URLs from the SuperFaktura docs and are not tested yet.
 
 ---
 

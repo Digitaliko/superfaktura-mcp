@@ -45,6 +45,12 @@
           "description": "Company ID, only for accounts with several companies",
           "isRequired": false,
           "format": "string"
+        },
+        {
+          "name": "SUPERFAKTURA_READ_ONLY",
+          "description": "1 = expose only the read tools",
+          "isRequired": false,
+          "format": "string"
         }
       ]
     }

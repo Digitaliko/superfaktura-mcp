@@ -9,9 +9,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy server code
 COPY server.py .
 
-# Expose port
-ENV PORT=8000
-EXPOSE 8000
-
-# Run as HTTP server
-CMD ["python", "server.py", "--http"]
+# stdio MCP server (0.1.0 has no HTTP mode)
+CMD ["python", "server.py"]

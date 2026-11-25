@@ -7,7 +7,6 @@ HTTP 200 response, credit notes (type "cancel" + parent_id), and the loose
 invoice_no_formatted filter.
 """
 
-import base64
 import time
 
 import pytest
@@ -19,10 +18,6 @@ pytestmark = skip_without_sandbox
 S = {"invoices": [], "clients": [], "expenses": []}
 TODAY = time.strftime("%Y-%m-%d")
 ICO = "5" + STAMP.replace("-", "")[-7:]  # unique 8-digit test ICO
-
-
-def b64(text):
-    return base64.b64encode(text.encode()).decode()
 
 
 def new_invoice(**kwargs):
@@ -39,7 +34,7 @@ def money(x):
 # --- clients ---------------------------------------------------------------
 
 def test_client_create_with_ids_and_address():
-    r = ok(run("create_client", name=f"MCP test {STAMP} s.r.o.", ico=ICO, dic="20" + ICO,
+    r = ok(run("create_client", name=f"MCP test {STAMP} Košická Žilina s.r.o.", ico=ICO, dic="20" + ICO,
                address="Testovacia 1", city="Bratislava", zip_code="81101", email="mcp-test@example.com"))
     S["client_id"] = int(r["data"]["Client"]["id"])
     S["clients"].append(S["client_id"])
@@ -51,12 +46,12 @@ def test_client_get_by_id():
 
 
 def test_client_search_by_name():
-    r = ok(run("list_clients", search=b64(f"MCP test {STAMP}")))
+    r = ok(run("list_clients", search=f"MCP test {STAMP} Košická Žilina"))  # plain text, diacritics
     assert str(S["client_id"]) in {str(i["Client"]["id"]) for i in r["items"]}
 
 
 def test_client_search_by_ico():
-    r = ok(run("list_clients", search=b64(ICO)))
+    r = ok(run("list_clients", search=ICO))
     assert str(S["client_id"]) in {str(i["Client"]["id"]) for i in r["items"]}
 
 
@@ -118,6 +113,19 @@ def test_invoice_find_by_exact_number():
     assert S["vat23_no"] in {i["Invoice"]["invoice_no_formatted"] for i in r["items"]}
 
 
+def test_invoice_number_with_slash():
+    number = f"MCPT/{STAMP.replace('-', '')}"
+    new_invoice(name=f"MCP test {STAMP} slash number", invoice_no_formatted=number,
+                invoice_items=[{"name": "x", "unit_price": 1, "quantity": 1, "tax": 0}])
+    r = ok(run("list_invoices", invoice_no_formatted=number))
+    assert number in {i["Invoice"]["invoice_no_formatted"] for i in r["items"]}
+
+
+def test_invoice_list_multi_status():
+    r = ok(run("list_invoices", client_id=S["client_id"], status="1|2", per_page=50))
+    assert str(S["vat23"]) in {str(i["Invoice"]["id"]) for i in r["items"]}
+
+
 def test_invoice_update_an_item():
     item = S["vat23_items"][0]
     ok(run("edit_invoice", invoice_id=S["vat23"], updates={
@@ -130,8 +138,12 @@ def test_invoice_update_an_item():
 def test_invoice_partial_then_full_payment():
     inv_id, data = new_invoice(name=f"MCP test {STAMP} payments",
                                invoice_items=[{"name": "Support", "unit_price": 100, "quantity": 1, "tax": 0}])
-    ok(run("mark_invoice_paid", invoice_id=inv_id, amount=40))
-    assert str(ok(run("get_invoice", invoice_id=inv_id))["Invoice"]["status"]) == "2"  # partially paid
+    ok(run("mark_invoice_paid", invoice_id=inv_id, amount=40, payment_date="2026-11-20", payment_type="cash"))
+    inv = ok(run("get_invoice", invoice_id=inv_id))
+    assert str(inv["Invoice"]["status"]) == "2"  # partially paid
+    pay = inv["InvoicePayment"][0]
+    assert pay["payment_type"] == "cash" and pay["payment_currency"] == "EUR"
+    assert str(pay["created"]).startswith("2026-11-20"), pay  # the payment date we sent
     ok(run("mark_invoice_paid", invoice_id=inv_id, amount=60))
     assert str(ok(run("get_invoice", invoice_id=inv_id))["Invoice"]["status"]) == "3"  # paid
 

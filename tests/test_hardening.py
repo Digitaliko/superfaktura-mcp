@@ -72,8 +72,9 @@ def test_c1_language_any_case(http):
 
 
 def test_c1_invoice_number_with_slash(http):
+    # an encoded slash never matches in SuperFaktura's path filter (sandbox); search finds it
     run("list_invoices", invoice_no_formatted="2026/001")
-    assert "/invoice_no_formatted:2026%2F001" in http["calls"][-1][1]
+    assert http["calls"][-1][1].endswith(f"/search:{sf_b64('2026/001')}")
 
 
 @pytest.mark.parametrize("tool,kw", [
@@ -99,7 +100,8 @@ def test_c2_search_is_encoded(http, tool, text):
 def test_c4_payment_defaults_to_invoice_currency(http):
     run("mark_invoice_paid", invoice_id=7, amount=10, payment_date="2026-11-20")
     body = http["calls"][-1][2]["InvoicePayment"]
-    assert body == {"invoice_id": 7, "amount": 10, "payment_type": "transfer", "date": "2026-11-20", "currency": "CZK"}
+    assert body == {"invoice_id": 7, "amount": 10, "payment_type": "transfer", "date": "2026-11-20",
+                    "created": "2026-11-20", "currency": "CZK"}
 
 
 def test_c4_payment_type_and_currency(http):

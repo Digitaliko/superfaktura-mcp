@@ -22,7 +22,9 @@ SANDBOX_HOSTS = {"sandbox.superfaktura.sk", "sandbox.superfaktura.cz"}
 
 
 def is_sandbox_url(url):
-    raise NotImplementedError
+    """Only https://sandbox.superfaktura.sk or .cz, by exact hostname."""
+    parsed = urlparse(url)
+    return parsed.scheme == "https" and parsed.hostname in SANDBOX_HOSTS
 
 
 skip_without_sandbox = pytest.mark.skipif(not (EMAIL and KEY), reason="no SuperFaktura sandbox credentials")
@@ -31,7 +33,7 @@ STAMP = time.strftime("%Y%m%d-%H%M%S")
 
 @pytest.fixture(autouse=True, scope="module")
 def sandbox_env():
-    assert URL.startswith("https://sandbox.superfaktura."), "SANDBOX_SUPERFAKTURA_URL must be a sandbox URL"
+    assert is_sandbox_url(URL), "SANDBOX_SUPERFAKTURA_URL must be https://sandbox.superfaktura.sk or .cz"
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv("SUPERFAKTURA_EMAIL", EMAIL)
         mp.setenv("SUPERFAKTURA_API_KEY", KEY)
@@ -40,7 +42,7 @@ def sandbox_env():
             mp.setenv("SUPERFAKTURA_COMPANY_ID", COMPANY_ID)
         else:
             mp.delenv("SUPERFAKTURA_COMPANY_ID", raising=False)
-        assert server._get_client().base_url.startswith("https://sandbox.superfaktura.")
+        assert is_sandbox_url(server._get_client().base_url)
         yield
 
 

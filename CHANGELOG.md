@@ -25,8 +25,26 @@ internal milestones before the package was versioned.
 - `SuperFakturaClient()` without arguments ignored `SUPERFAKTURA_COUNTRY`
 - `list_invoices` status values per the docs (1 issued, 2 partially paid, 3 paid, 99 overdue)
 
+### Security and safety (pre-release review)
+- Text from the model can no longer shape request URLs: every `key:value` path segment is
+  percent-encoded and languages are checked against the 14 documented codes (before, a crafted
+  `language` could turn the PDF call into `GET /invoices/delete/...`)
+- MCP annotations on all 21 tools (read-only / destructive); `SUPERFAKTURA_READ_ONLY=1` leaves out
+  every write tool; delete tools say PERMANENT; `send_invoice` needs an explicit recipient
+- No HTTP mode: `--http` is refused, `PORT` no longer switches transport, and the dead per-request
+  credential path is gone (it was never reachable through fastmcp's Context)
+- `.env` is read only when the server is started, never on import
+- The PDF is saved with `mkstemp` (private file, invoice id and language in the name)
+
+### Changed
+- `search` takes plain text and encodes it as the docs require (base64 with `-_,`)
+- `list_invoices`: an invoice number containing `/` is looked up through search (the path filter never matches it)
+- `mark_invoice_paid`: `payment_type` and `currency` (defaults to the invoice's currency); sends the payment date
+- HTTP errors return the status, the first 500 characters of the body and `X-RateLimit-Message`; HTTP 429 is retried twice with a short backoff
+- `SUPERFAKTURA_COUNTRY` is case-insensitive; the missing-credentials error is one line
+
 ### Removed
-- `jsonpath-ng` dependency (unused)
+- `jsonpath-ng` (unused) and `uvicorn` (HTTP mode removed)
 
 ## [2.0.0] - 2025-11-02
 

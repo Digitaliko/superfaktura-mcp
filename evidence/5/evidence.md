@@ -1,7 +1,7 @@
 # superfaktura-mcp v0.1.0: tools aligned with the SuperFaktura docs, uvx package, tests, registry files
 
 > [!IMPORTANT]
-> 6 of 19 tools called the API wrong (wrong URL, method or body). All 6 are fixed, and 2 lookup tools were added (21 tools now). Everything was run against sandbox.superfaktura.sk: 49 passed, 1 skipped (send_invoice, which sends a real email). Claude also ran a 9-step scenario through the MCP with no failures. Publishing to PyPI and the MCP Registry waits for one token: `OSS5ca`.
+> 6 of 19 tools called the API wrong (wrong URL, method or body). All 6 are fixed, and 2 lookup tools were added (21 tools now). The pre-release review fixes (C1-C9, P1-P5) are in too. The worst was C1: text from the model could turn a PDF call into a GET delete. Everything was re-run against sandbox.superfaktura.sk: 51 passed, 1 skipped (send_invoice, which sends a real email). Claude ran the 9-step scenario through the MCP again with no failures. Publishing waits for `OSS5ca`.
 
 ## Decide
 ### Needs you
@@ -24,6 +24,21 @@
 - Registry: `server.json` (validated against the 2025-12-11 schema), with an `mcp-name:` line in the README. README also gained badges (PyPI, license, Glama score and card; a CI badge can follow once the workflow is on main) and uvx / Claude Code install steps.
 - Small gaps fixed here: `list_expense_categories`, `list_tags`, and the `list_invoices` status values (1 issued, 2 partially paid, 3 paid, 99 overdue). Bigger gaps went to repo issue `superfaktura-mcp#6` (Inbox): eInvoice/Peppol, missing invoice and expense endpoints, value lists, and the PDF tool in hosted mode.
 
+- Review fixes:
+  - C1: every `key:value` URL segment is percent-encoded, and languages are checked against the 14 documented codes. An invoice number with `/` goes through search, because on the sandbox the path filter never matched it.
+  - C2: `search` takes plain text and is encoded as base64 with `-_,`. Tested with "Košická Žilina".
+  - C3 and C8: no HTTP mode. `--http` exits 2 and PORT is ignored. The dead per-request credential path and the "Multi-tenant" claim are removed. The Dockerfile now runs stdio.
+  - C4: `mark_invoice_paid` takes `payment_type` and `currency`, and the currency defaults to the invoice's. The documented `date` field did not set the payment date on the sandbox; `created` did, so both are sent (sandbox test: stored 2026-11-20).
+  - C5: `.env` is read only in `main()`.
+  - C6: the PDF goes to a `mkstemp` file with mode 0600, named by invoice and language.
+  - C7: HTTP errors carry the status, 500 characters of the body and `X-RateLimit-Message`; a 429 is retried twice.
+  - C9: the sandbox guard checks the exact host.
+  - P1: annotations on all 21 tools, `SUPERFAKTURA_READ_ONLY=1`, delete descriptions start with PERMANENT, delete_invoice points to the credit note, and send_invoice needs `email`.
+  - P2: unit_price is without VAT and tax is the VAT percent.
+  - P3: uv install steps and the `which uvx` path.
+  - P4: only SK is tested; CZ and AT use the documented URLs, untested.
+  - P5: the credentials error is one line, and the country code is case-insensitive.
+
 ## Change
 | repo | file | what |
 |---|---|---|
@@ -43,9 +58,15 @@ Merging deploys nothing. The tag and GitHub release only publish the source.
 ## Proof
 - Red, before the fix (`04b812e`, tests only): `9 failed, 17 passed`. Failing: delete_invoice, mark_invoice_paid, get_invoice_pdf, set_invoice_language, delete_expense endpoints, the send_invoice body (x2), the PDF file, and the country default.
 - Green, after (mocked): `29 passed, 20 skipped` (20 skipped = the sandbox suite without keys).
-- Mocked, final: `44 passed, 50 skipped` (the 50 skipped are the two sandbox suites, which need keys).
-- Sandbox, final: `tests/test_sandbox.py tests/test_sandbox_scenarios.py`: `49 passed, 1 skipped in 35.11s` (skipped: send_invoice).
-- Scenario run through the MCP: `claude -p` (sonnet) over stdio, 9 Slovak steps, 17 tool calls, no failure: `mcp-scenario-run.txt`. It created a client and found it by IČO, issued an invoice (361.00 base + 83.03 VAT = 444.03, correct for 380 EUR less 5 % at 23 %), recorded a 100 EUR payment (344.03 left, status 2), a proforma, a copy of the last invoice, an English PDF (250 KB), an expense in category Kancelária, and a refused XXX currency. It then deleted all of it.
+- Review fixes, red first (`303b8cc`, tests only): 38 failing or erroring in `tests/test_hardening.py`. After the fixes they pass.
+- Mocked, final: `82 passed, 52 skipped` (the 52 skipped are the two sandbox suites, which need keys).
+- Sandbox, final: `tests/test_sandbox.py tests/test_sandbox_scenarios.py`: `51 passed, 1 skipped in 42.24s` (skipped: send_invoice).
+- Scenario run through the MCP after the fixes: `claude -p` (sonnet) over stdio, 9 Slovak steps, 17 tool calls, no failure: `mcp-scenario-run.txt`.
+  - It created "Košická Žilina s.r.o." and found it with the plain-text search "Košická Žilina".
+  - It issued an invoice: 361.00 base + 83.03 VAT = 444.03, which is correct for 380 EUR less 5 % at 23 %.
+  - It recorded a 100 EUR cash payment dated 20. 11. (344.03 left), then a proforma, a copy of the last invoice, a private English PDF and an expense.
+  - The XXX currency was refused with a readable error.
+  - It deleted everything it created.
 - Demo, tool calls in order: `list_clients(search "Demo s.r.o.")` -> none, `list_clients(search "Demo")` -> none, `create_client("Demo s.r.o.")` -> id 104114, `create_invoice(client 104114, "Konzultácia" 1 x 50 EUR)` -> id 381212, number 2026019.
 - Image: `01-demo-invoice-sandbox-after.jpg` (invoice 2026019 in the sandbox UI; the supplier fields are sandbox placeholders)
 

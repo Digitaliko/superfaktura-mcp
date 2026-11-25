@@ -58,7 +58,7 @@ List and filter invoices with advanced options.
   - `invoice_no_formatted` - Invoice number
   - `order_no` - Order number
   - `variable` - Variable symbol
-  - `search` - Base64 encoded full-text search
+  - `search` - Plain-text full-text search
 - **Tags**: `tag` - Tag ID
 - **Exclusions**: `ignore` - Invoice IDs to exclude (use `|` separator)
 - **Field filtering**: `fields_filter` - Extract specific fields as array of arrays (rows)
@@ -97,23 +97,25 @@ Delete an invoice.
 
 ### send_invoice
 
-Send invoice via email.
+Sends a real email to the customer; the agent should confirm with you first.
 
 **Parameters:**
 - `invoice_id` (int) - Invoice ID
-- `email` (str, optional) - Recipient (defaults to the client's email on the invoice)
+- `email` (str) - Recipient, required (never guessed from the client record)
 - `pdf_language` (str, optional) - PDF language (eng, slo, cze, deu, etc.)
 
 SuperFaktura allows 100 emails per hour.
 
 ### mark_invoice_paid
 
-Mark invoice as paid by recording a payment.
+Record a payment (partial or full).
 
 **Parameters:**
 - `invoice_id` (int) - Invoice ID
 - `amount` (float) - Payment amount
 - `payment_date` (str, optional) - Payment date (YYYY-MM-DD), defaults to today
+- `payment_type` (str, optional) - `transfer` (default), `cash`, `card`, `cod`, `paypal`, `other`, ...
+- `currency` (str, optional) - Defaults to the invoice's currency
 
 ### get_invoice_pdf
 
@@ -166,7 +168,7 @@ List clients with filtering and sorting.
 
 **Filters:**
 - `char_filter` - Filter by first letter of client name (use `#` for non-letters)
-- `search` - Base64 encoded search (searches across: name, ICO, DIC, IC_DPH, bank_account, email, address, city, zip, state, country, phone, fax, comment, tags, UUID)
+- `search` - Plain-text search (across: name, ICO, DIC, IC_DPH, bank_account, email, address, city, zip, state, country, phone, fax, comment, tags, UUID)
 - `search_uuid` - Search by exact UUID
 - `tag` - Tag ID
 - **Time ranges**:
@@ -249,7 +251,7 @@ List expenses with comprehensive filtering.
 - **Other**:
   - `due` - Due date (YYYY-MM-DD)
   - `payment_type`
-  - `search` - Base64 encoded search
+  - `search` - Plain-text search
   - `status` - Use `|` for multiple
   - `type`
 - **Field filtering**: `fields_filter` - Extract specific fields as array of arrays (rows)
@@ -292,11 +294,8 @@ Delete an expense.
 ### Dates
 All dates use format: `YYYY-MM-DD`
 
-### Base64 Search
-When providing base64 encoded search strings, replace special characters:
-- `+` → `-`
-- `/` → `_`
-- `=` → `,`
+### Search
+`search` takes plain text ("Demo s.r.o.", "Košická Žilina"). The tool encodes it the way SuperFaktura wants (base64 with `+` → `-`, `/` → `_`, `=` → `,`). An invoice number with `/` in `invoice_no_formatted` is looked up through the same search.
 
 ### Multiple Values
 Use `|` as separator for multiple values (e.g., `type:regular|proforma`)
