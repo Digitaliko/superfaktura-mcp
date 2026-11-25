@@ -1,7 +1,7 @@
 # superfaktura-mcp v0.1.0: tools aligned with the SuperFaktura docs, uvx package, tests, registry files
 
 > [!IMPORTANT]
-> 6 of 19 tools called the API wrong (wrong URL, method or body). All 6 are fixed, and 2 lookup tools were added (21 tools now). The pre-release review fixes (C1-C9, P1-P5) are in too. The worst was C1: text from the model could turn a PDF call into a GET delete. Everything was re-run against sandbox.superfaktura.sk: 51 passed, 1 skipped (send_invoice, which sends a real email). Claude ran the 9-step scenario through the MCP again with no failures. Publishing waits for `OSS5ca`.
+> 6 of 19 tools called the API wrong (wrong URL, method or body). All 6 are fixed, and 2 lookup tools were added (21 tools now). The pre-release review fixes (C1-C9, P1-P5) are in too. The worst was C1: text from the model could turn a PDF call into a GET delete. Everything was re-run against sandbox.superfaktura.sk: 51 passed, 1 skipped (send_invoice, which sends a real email). Claude ran the 9-step scenario through the MCP again with no failures. Review round 5's three blockers are fixed with tests (read-only decided at start, every tool checked against the pinned docs, an invoice view without an `Invoice` is a failure); `wizrd pr review` refuses a round 6 after a round with blockers, so a separate reviewer re-read commit `2177479`: 0 blockers. Publishing waits for `OSS5ca`.
 
 ## Decide
 ### Needs you
@@ -24,6 +24,10 @@
 - Registry: `server.json` (validated against the 2025-12-11 schema), with an `mcp-name:` line in the README. README also gained badges (PyPI, license, Glama score and card; a CI badge can follow once the workflow is on main) and uvx / Claude Code install steps.
 - Small gaps fixed here: `list_expense_categories`, `list_tags`, and the `list_invoices` status values (1 issued, 2 partially paid, 3 paid, 99 overdue). Bigger gaps went to repo issue `superfaktura-mcp#6` (Inbox): eInvoice/Peppol, missing invoice and expense endpoints, value lists, and the PDF tool in hosted mode.
 
+- Review round 5 fixes (Filip's `OSS5b`, one more round):
+  - r5-0: `SUPERFAKTURA_READ_ONLY` is applied in `main()` after `.env` is loaded, never at import. Importing `server` always gives 21 tools; the started server in read-only mode lists 9.
+  - r5-1: `tests/test_docs.py` reads the SuperFaktura docs at a pinned commit (`67a95f7`) and checks every tool's HTTP method and URL against the documented section, not against the code. `update_client` PATCH (clients.md "Edit client") and `delete_client` DELETE (clients.md "Delete client") match the docs. Two URL differences are marked with the reason: `clients/view/{id}.json` (docs omit `.json`, sandbox accepts it) and `expenses/view` (the docs' URL line says `expense/view`, their own curl example says `expenses/view`).
+  - r5-2: `mark_invoice_paid` and `get_invoice_pdf` accept an invoice only when the body has an `Invoice` object with an id (invoice.md "Get invoice detail"). A body without `error` and without an invoice is now a failure. Before, `mark_invoice_paid` posted a payment after such a body.
 - Review fixes:
   - C1: every `key:value` URL segment is percent-encoded, and languages are checked against the 14 documented codes. An invoice number with `/` goes through search, because on the sandbox the path filter never matched it.
   - C2: `search` takes plain text and is encoded as base64 with `-_,`. Tested with "Košická Žilina".
@@ -71,6 +75,8 @@ Merging deploys nothing. The tag and GitHub release only publish the source.
 - Image: `01-demo-invoice-sandbox-after.jpg` (invoice 2026019 in the sandbox UI; the supplier fields are sandbox placeholders)
 
 ![Invoice 2026019 created through the MCP, in the SuperFaktura sandbox](01-demo-invoice-sandbox-after.jpg)
+- Review round 5, red first: the new tests on head `359ab84`: `8 failed, 23 passed` (r5-0 import with READ_ONLY, 4 payment bodies, 3 PDF bodies; the 21 docs checks passed, which is the r5-1 finding: the code already matched the docs, only the proof was missing).
+- Review round 5, green on `2177479`: mocked `115 passed, 52 skipped`; sandbox `51 passed, 1 skipped in 39.00s`.
 - CI builds the wheel, runs it with uvx and lists its tools over stdio.
 - `server.json` validates against `https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json`.
 
