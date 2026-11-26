@@ -1,0 +1,46 @@
+name: sbom
+
+# The CycloneDX SBOM of the dependencies (scripts/scan/sbom.sh: syft over uv.lock, pinned and checksummed).
+# Every push to main keeps it as a workflow artifact; a published release also gets it as a release asset.
+# The step fails when the SBOM is empty or misses a direct dependency of pyproject.toml.
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  sbom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the pinned osv-scanner and syft
+        run: bash scripts/scan/install.sh "$RUNNER_TEMP/scan" && echo "$RUNNER_TEMP/scan/bin" >> "$GITHUB_PATH"
+      - name: SBOM
+        run: bash scripts/scan/sbom.sh sbom.cdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.sha }}
+          path: sbom.cdx.json
+          if-no-files-found: error
+
+  # only this job may write, and only on a published release
+  release-asset:
+    if: github.event_name == 'release'
+    needs: sbom
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sbom-${{ github.sha }}
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" sbom.cdx.json --clobber

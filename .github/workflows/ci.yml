@@ -21,3 +21,16 @@ jobs:
           WHEEL=$(ls dist/superfaktura_mcp-*.whl)
           SMOKE_COMMAND="uvx --python ${{ matrix.python }} --from $PWD/$WHEEL superfaktura-mcp" \
             uv run --python ${{ matrix.python }} pytest -q tests/test_stdio_smoke.py
+
+  # known vulnerabilities in uv.lock (critical/high fail, allowlist: security-allowlist.json), pinned scanner
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install the pinned osv-scanner and syft
+        run: bash scripts/scan/install.sh "$RUNNER_TEMP/scan" && echo "$RUNNER_TEMP/scan/bin" >> "$GITHUB_PATH"
+      - name: Dependency scan
+        run: bash scripts/scan/osv.sh
+      - name: Scanner tests (planted vulnerable lockfile)
+        run: uv run --python 3.12 pytest -q tests/test_scan.py
