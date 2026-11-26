@@ -1,4 +1,4 @@
 # Keep in sync with [project.dependencies] in pyproject.toml (CI checks it).
-fastmcp>=2.6.0
+fastmcp>=2.6.0,<3
 requests>=2.31.0
 python-dotenv>=1.0.0

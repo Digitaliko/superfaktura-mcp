@@ -51,6 +51,16 @@ internal milestones before the package was versioned.
 ### Removed
 - `jsonpath-ng` (unused) and `uvicorn` (HTTP mode removed)
 
+### Dependencies and supply chain
+- `fastmcp>=2.6.0,<3`: with fastmcp 3 or newer (what a fresh `uvx` or `pip install` resolved to),
+  `SUPERFAKTURA_READ_ONLY=1` crashed at start (`FastMCP.remove_tool` is gone). CI's wheel smoke
+  test now also starts the server in read-only mode with freshly resolved dependencies
+- `uv.lock` upgraded within that range (fastmcp 2.14.7, mcp 1.30, cryptography 50, urllib3 2.8,
+  certifi 2026.11.20, starlette 1.x, ...): 45 baselined critical/high advisories down to 4, each
+  re-triaged as not reachable in this server (fastmcp OpenAPI provider and OAuth proxy, dnspython on
+  Python 3.10 only) in `security-allowlist.json`, expiring 2027-01-15
+- CycloneDX SBOM, `SECURITY.md` and a pinned OSV dependency scan in CI
+
 ## [2.0.0] - 2025-11-02
 
 ### Major Enhancements
