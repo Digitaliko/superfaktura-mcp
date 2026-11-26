@@ -59,7 +59,7 @@ internal milestones before the package was versioned.
   certifi 2026.11.20, starlette 1.x, ...): 45 baselined critical/high advisories down to 4, each
   re-triaged as not reachable in this server (fastmcp OpenAPI provider and OAuth proxy, dnspython on
   Python 3.10 only) in `security-allowlist.json`, expiring 2027-01-15
-- CycloneDX SBOM, `SECURITY.md` and a pinned OSV dependency scan in CI
+- CycloneDX SBOM, `SECURITY.md` and a pinned OSV dependency scan in CI (#8)
 
 ## [2.0.0] - 2025-11-02
 

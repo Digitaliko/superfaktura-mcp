@@ -37,5 +37,5 @@ def test_stdio_read_only_lists_only_read_tools(tmp_path):
     # Under SMOKE_COMMAND (the wheel run by uvx) the dependencies are resolved fresh, as a user's
     # `uvx superfaktura-mcp` resolves them, not from uv.lock: the declared range must keep this working.
     names = _list_names(tmp_path, SUPERFAKTURA_READ_ONLY="1")
-    assert len(names) == 9
-    assert "list_invoices" in names and "create_invoice" not in names and "delete_invoice" not in names
+    assert names == ["get_client", "get_expense", "get_invoice", "get_invoice_pdf", "list_clients",
+                     "list_expense_categories", "list_expenses", "list_invoices", "list_tags"]
