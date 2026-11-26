@@ -192,19 +192,22 @@ def _load_toml(path: str) -> dict:
 
 def main(argv: list[str]) -> int:
     cmd, file, rest = (argv + [None, None])[0], (argv + [None, None])[1], argv[2:]
+    if cmd not in ("osv", "sbom") or not rest:
+        print("usage: scan.py osv <result.json> <label> | scan.py sbom <sbom.cdx.json> <pyproject.toml>", file=sys.stderr)
+        return 2
     try:
         data = json.loads(Path(file or "").read_text())
     except (OSError, ValueError):
         print(f"FAIL {'sbom' if cmd == 'sbom' else 'security'}: {file} is missing or not JSON, so the step did not finish")
         return 1
-    if cmd == "osv" and rest:
+    if cmd == "osv":
         list_file = os.environ.get("SCAN_ALLOWLIST") or str(Path(__file__).resolve().parents[2] / "security-allowlist.json")
         allow = read_allowlist(Path(list_file).read_text() if Path(list_file).exists() else None)
         today = os.environ.get("SCAN_TODAY") or dt.date.today().isoformat()
         text, ok = render(rest[0], judge(osv(data), allow, today))
         print(text)
         return 0 if ok else 1
-    if cmd == "sbom" and rest:
+    if cmd == "sbom":
         deps = direct_deps(_load_toml(rest[0]))
         gaps = sbom_gaps(data, deps)
         n = len(data.get("components") or [])

@@ -15,8 +15,6 @@ permissions:
 jobs:
   sbom:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write # only used to attach the file to a published release
     steps:
       - uses: actions/checkout@v4
       - name: Install the pinned osv-scanner and syft
@@ -28,9 +26,21 @@ jobs:
           name: sbom-${{ github.sha }}
           path: sbom.cdx.json
           if-no-files-found: error
+
+  # only this job may write, and only on a published release
+  release-asset:
+    if: github.event_name == 'release'
+    needs: sbom
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sbom-${{ github.sha }}
       - name: Attach to the release
-        if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ github.event.release.tag_name }}
         run: gh release upload "$TAG" sbom.cdx.json --clobber
