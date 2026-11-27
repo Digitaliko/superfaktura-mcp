@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.1.0] - 2026-11-25
+## [0.1.0] - 2026-11-27
 
 First tagged release and first PyPI package. The 1.0.0 and 2.0.0 entries below were
 internal milestones before the package was versioned.
@@ -10,6 +10,8 @@ internal milestones before the package was versioned.
 - Tests: every tool against mocked HTTP, a stdio smoke test that lists the tools, and an
   end-to-end suite against a SuperFaktura sandbox account (`tests/test_sandbox.py`)
 - CI on Python 3.10 and 3.12
+- PyPI release from a published GitHub release with Trusted Publishing (`.github/workflows/publish.yml`)
+- The server reports its own version (`serverInfo.version` 0.1.0), not fastmcp's
 - `send_invoice`: `pdf_language`
 - `list_expense_categories`, `list_tags`
 - `create_client` refuses an empty name with a readable error (SuperFaktura returns an empty error list)

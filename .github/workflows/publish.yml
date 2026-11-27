@@ -1,0 +1,53 @@
+name: publish
+
+# A published GitHub release (tag vX.Y.Z) uploads the package to PyPI with Trusted Publishing:
+# no token or secret, PyPI trusts this workflow file in the `pypi` environment (OIDC).
+# The build job fails when the tag does not match pyproject.toml, server.json and server.py.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: The tag is the package version
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          VERSION=$(uv run --no-project --python 3.12 python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          echo "tag $TAG, pyproject $VERSION"
+          test "$TAG" = "v$VERSION"
+      - run: uv run --python 3.12 pytest -q
+      - run: uv build
+      - name: The built wheel, run by uvx, serves all tools over stdio
+        run: |
+          WHEEL=$(ls dist/superfaktura_mcp-*.whl)
+          SMOKE_COMMAND="uvx --python 3.12 --from $PWD/$WHEEL superfaktura-mcp" \
+            uv run --python 3.12 pytest -q tests/test_stdio_smoke.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  # only this job gets the OIDC token, and only in the `pypi` environment
+  pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/superfaktura-mcp/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3

@@ -11,7 +11,9 @@ import requests
 from fastmcp import FastMCP, Context
 from mcp.types import ToolAnnotations
 
-mcp = FastMCP(name="superfaktura")
+__version__ = "0.1.0"  # = pyproject.toml and server.json (tests/test_packaging.py)
+
+mcp = FastMCP(name="superfaktura", version=__version__)
 
 # Tools that change data in SuperFaktura. SUPERFAKTURA_READ_ONLY=1 leaves them out.
 WRITE_TOOLS = {

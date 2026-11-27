@@ -1,5 +1,5 @@
 """requirements.txt (Docker, Smithery) and pyproject.toml (PyPI, uvx) list the same deps,
-and server.json matches the package version."""
+and server.json and server.__version__ match the package version."""
 
 import json
 from pathlib import Path
@@ -25,3 +25,8 @@ def test_server_json_matches_package():
     assert meta["version"] == pkg["version"] == project["version"]
     assert pkg["identifier"] == project["name"]
     assert f"mcp-name: {meta['name']}" in (ROOT / "README.md").read_text()
+
+
+def test_server_version_matches_package():
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
+    assert f'__version__ = "{project["version"]}"' in (ROOT / "server.py").read_text()
