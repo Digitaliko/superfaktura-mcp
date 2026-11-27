@@ -52,9 +52,12 @@ internal milestones before the package was versioned.
 - `jsonpath-ng` (unused) and `uvicorn` (HTTP mode removed)
 
 ### Dependencies and supply chain
-- `fastmcp>=2.6.0,<3`: with fastmcp 3 or newer (what a fresh `uvx` or `pip install` resolved to),
+- `fastmcp>=2.11.3,<3`: with fastmcp 3 or newer (what a fresh `uvx` or `pip install` resolved to),
   `SUPERFAKTURA_READ_ONLY=1` crashed at start (`FastMCP.remove_tool` is gone). CI's wheel smoke
   test now also starts the server in read-only mode with freshly resolved dependencies
+- The floor was `2.6.0`, which never worked with today's dependencies: fastmcp before 2.11.3 does
+  not bound `mcp` below 2 and fails at import. CI now also runs the tests at the lowest declared
+  versions (`--resolution lowest-direct`)
 - `uv.lock` upgraded within that range (fastmcp 2.14.7, mcp 1.30, cryptography 50, urllib3 2.8,
   certifi 2026.11.20, starlette 1.x, ...): 45 baselined critical/high advisories down to 4, each
   re-triaged as not reachable in this server (fastmcp OpenAPI provider and OAuth proxy, dnspython on

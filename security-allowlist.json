@@ -2,12 +2,12 @@
   "accepted": [
     {
       "id": "GHSA-vv7q-7jx5-f767",
-      "reason": "re-triaged 2026-11-26 (critical, fastmcp@2.14.7: OpenAPI Provider SSRF and path traversal). Not reachable: this server never uses FastMCP's OpenAPI provider, only @mcp.tool functions over stdio. The fix is fastmcp>=3.2, a major move (read-only mode uses remove_tool, gone in 3.x); tracked as the fastmcp 4 port. Re-triage before the expiry.",
+      "reason": "re-triaged 2026-11-26 (critical, fastmcp@2.14.7: OpenAPI Provider SSRF and path traversal). Not reachable: this server never uses FastMCP's OpenAPI provider, only @mcp.tool functions over stdio. The fix is fastmcp>=3.2, a major move (read-only mode uses remove_tool, gone in 3.x); tracked in #6 (fastmcp 3.2+ port). Re-triage before the expiry.",
       "expires": "2027-01-15"
     },
     {
       "id": "GHSA-rww4-4w9c-7733",
-      "reason": "re-triaged 2026-11-26 (high, fastmcp@2.14.7: OAuth Proxy callback consent). Not reachable: no auth provider and no HTTP transport (stdio only, --http refused). Fix is fastmcp>=3.2, tracked as the fastmcp 4 port. Re-triage before the expiry.",
+      "reason": "re-triaged 2026-11-26 (high, fastmcp@2.14.7: OAuth Proxy callback consent). Not reachable: no auth provider and no HTTP transport (stdio only, --http refused). Fix is fastmcp>=3.2, tracked in #6 (fastmcp 3.2+ port). Re-triage before the expiry.",
       "expires": "2027-01-15"
     },
     {

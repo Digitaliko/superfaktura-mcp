@@ -21,6 +21,11 @@ jobs:
           WHEEL=$(ls dist/superfaktura_mcp-*.whl)
           SMOKE_COMMAND="uvx --python ${{ matrix.python }} --from $PWD/$WHEEL superfaktura-mcp" \
             uv run --python ${{ matrix.python }} pytest -q tests/test_stdio_smoke.py
+      - name: The lowest declared versions (requirements.txt floors) still pass
+        run: |
+          uv run --no-project --isolated --resolution lowest-direct --python ${{ matrix.python }} \
+            --with-requirements requirements.txt --with 'pytest>=8' --with 'tomli>=2' \
+            python -m pytest -q -p no:cacheprovider
 
   # known vulnerabilities in uv.lock (critical/high fail, allowlist: security-allowlist.json), pinned scanner
   security:
