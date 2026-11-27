@@ -9,22 +9,40 @@ import shlex
 import sys
 from pathlib import Path
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10
+    import tomli as tomllib
+
 from fastmcp import Client
 from fastmcp.client.transports import StdioTransport
 
 SERVER = Path(__file__).resolve().parent.parent / "server.py"
 
 
-def _list_names(tmp_path, **extra_env):
+def _transport(tmp_path, **extra_env):
     cmd = shlex.split(os.getenv("SMOKE_COMMAND", "")) or [sys.executable, str(SERVER)]
     env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": os.environ.get("HOME", str(tmp_path)), **extra_env}
-    transport = StdioTransport(command=cmd[0], args=cmd[1:], env=env, cwd=str(tmp_path))  # no .env, no keys
+    return StdioTransport(command=cmd[0], args=cmd[1:], env=env, cwd=str(tmp_path))  # no .env, no keys
 
+
+def _list_names(tmp_path, **extra_env):
     async def list_names():
-        async with Client(transport) as client:
+        async with Client(_transport(tmp_path, **extra_env)) as client:
             return sorted(t.name for t in await client.list_tools())
 
     return asyncio.run(list_names())
+
+
+def test_initialize_reports_the_package_version(tmp_path):
+    # serverInfo.version is what an MCP client shows; it must be ours, not fastmcp's.
+    async def server_info():
+        async with Client(_transport(tmp_path)) as client:
+            return client.initialize_result.serverInfo
+
+    info = asyncio.run(server_info())
+    project = tomllib.loads((SERVER.parent / "pyproject.toml").read_text())["project"]
+    assert (info.name, info.version) == ("superfaktura", project["version"])
 
 
 def test_stdio_lists_all_tools(tmp_path):
