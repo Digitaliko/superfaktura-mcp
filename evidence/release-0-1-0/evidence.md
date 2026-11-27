@@ -11,7 +11,7 @@
 
 ## What happened
 - Nothing could publish the package: no workflow had PyPI access, and the brief rules out tokens.
-- `publish.yml` runs on a published release: checks the tag is `v` + the pyproject version, runs the suite, builds, smoke-tests the wheel through `uvx`, then a separate `pypi` job (environment `pypi`, only job with `id-token: write`) uploads with `pypa/gh-action-pypi-publish` v1.14.3, pinned to its commit.
+- `publish.yml` runs on a published release (pre-releases skipped): checks the tag is `v` + the pyproject version, runs the suite, builds, smoke-tests the wheel through `uvx`, then a separate `pypi` job (environment `pypi`, only job with `id-token: write`) uploads with `pypa/gh-action-pypi-publish` v1.14.3, pinned to its commit.
 - Release, not a tag push: `gh release create` makes the tag and the release in one step, and `sbom.yml` already attaches the SBOM on the same event. One trigger means one upload.
 - `initialize` returned `serverInfo.version` 2.14.7 (fastmcp's). `server.__version__ = "0.1.0"` is passed to `FastMCP`, and a test keeps it equal to pyproject (it also works in the Docker image, which runs `server.py` without package metadata).
 - CHANGELOG 0.1.0 dated 2026-11-27 (was 2026-11-25), two lines added. pyproject, server.json and server.py are all 0.1.0.
