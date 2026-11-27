@@ -15,15 +15,27 @@ from fastmcp.client.transports import StdioTransport
 SERVER = Path(__file__).resolve().parent.parent / "server.py"
 
 
-def test_stdio_lists_all_tools(tmp_path):
+def _list_names(tmp_path, **extra_env):
     cmd = shlex.split(os.getenv("SMOKE_COMMAND", "")) or [sys.executable, str(SERVER)]
-    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": os.environ.get("HOME", str(tmp_path))}
+    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": os.environ.get("HOME", str(tmp_path)), **extra_env}
     transport = StdioTransport(command=cmd[0], args=cmd[1:], env=env, cwd=str(tmp_path))  # no .env, no keys
 
     async def list_names():
         async with Client(transport) as client:
             return sorted(t.name for t in await client.list_tools())
 
-    names = asyncio.run(list_names())
+    return asyncio.run(list_names())
+
+
+def test_stdio_lists_all_tools(tmp_path):
+    names = _list_names(tmp_path)
     assert len(names) == 21
     assert {"create_invoice", "list_clients", "create_expense"} <= set(names)
+
+
+def test_stdio_read_only_lists_only_read_tools(tmp_path):
+    # Under SMOKE_COMMAND (the wheel run by uvx) the dependencies are resolved fresh, as a user's
+    # `uvx superfaktura-mcp` resolves them, not from uv.lock: the declared range must keep this working.
+    names = _list_names(tmp_path, SUPERFAKTURA_READ_ONLY="1")
+    assert names == ["get_client", "get_expense", "get_invoice", "get_invoice_pdf", "list_clients",
+                     "list_expense_categories", "list_expenses", "list_invoices", "list_tags"]
