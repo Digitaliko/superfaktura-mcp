@@ -23,7 +23,7 @@
 | superfaktura-mcp | `uv.lock` | upgraded: fastmcp 2.14.1 -> 2.14.7, mcp 1.24 -> 1.30, cryptography 46 -> 50, urllib3 2.6.2 -> 2.8.0, certifi 2025.11.12 -> 2026.11.20, starlette 0.50 -> 1.x, python-multipart 0.0.20 -> 0.0.32+, lupa 2.6 -> 2.8, ... |
 | superfaktura-mcp | `tests/test_stdio_smoke.py` | new `test_stdio_read_only_lists_only_read_tools`: starts the server with `SUPERFAKTURA_READ_ONLY=1`, expects the 9 read tools |
 | superfaktura-mcp | `security-allowlist.json` | 45 baseline entries -> 4, each re-triaged with the reason it is not reachable here |
-| superfaktura-mcp | `CHANGELOG.md` | 0.1.0 (still untagged): "Dependencies and supply chain" section |
+| superfaktura-mcp | `CHANGELOG.md` | 0.1.0 (still untagged): "Dependencies and supply chain" section; it also records #8 (SBOM, SECURITY.md, OSV scan), merged without a changelog line |
 
 ## Goes out
 Nothing on merge (no deploy, no publish). It changes what the next PyPI release will resolve.
